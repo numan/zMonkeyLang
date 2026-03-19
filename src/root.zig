@@ -29,6 +29,7 @@ comptime {
 
 // All the tests go here
 comptime {
+    _ = @import("lib/lexer_test.zig");
     _ = @import("lib/parser_test.zig");
     _ = @import("lib/evaluator_test.zig");
     _ = @import("lib/gc_test.zig");

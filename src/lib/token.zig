@@ -30,14 +30,18 @@ pub const TokenType = enum {
     rbrace,
     lbracket,
     rbracket,
+    // Range
+    range_exclusive,
     // Keywords
     function,
     let,
     true,
     false,
+    in,
     @"if",
     @"else",
     @"return",
+    @"for",
 
     const StringTokenKVPair = struct { []const u8, TokenType };
 
@@ -55,6 +59,7 @@ pub const TokenType = enum {
         .{ ">", .gt },
         .{ "==", .eq },
         .{ "!=", .not_eq },
+        .{ "..", .range_exclusive },
         .{ "(", .lparen },
         .{ ")", .rparen },
         .{ "{", .lbrace },
@@ -68,6 +73,8 @@ pub const TokenType = enum {
         .{ "if", .@"if" },
         .{ "else", .@"else" },
         .{ "return", .@"return" },
+        .{ "for", .@"for" },
+        .{ "in", .in },
         .{ "\"", .string },
     };
 

@@ -454,6 +454,7 @@ pub const Parser = struct {
         _ = self;
         return switch (token_type) {
             .assign => .assign,
+            .range_exclusive => .range,
             .eq, .not_eq => .equals,
             .lt, .gt => .less_greater,
             .plus, .minus => .sum,
@@ -493,7 +494,7 @@ pub const Parser = struct {
     inline fn getInixParseFn(self: *const Self, token_type: TokenType) ?InfixParseFn {
         _ = self;
         return switch (token_type) {
-            inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt => Self.parseInfixExpression,
+            inline .plus, .minus, .slash, .asterisk, .eq, .not_eq, .lt, .gt, .range_exclusive => Self.parseInfixExpression,
             .lparen => Self.parseCallExpression,
             .lbracket => Self.parseIndexExpression,
             .assign => Self.parseAssignExpression,

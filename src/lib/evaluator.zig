@@ -129,6 +129,7 @@ pub const Evaluator = struct {
             .expression => |*expression_statement| try self.evalExpressionStatement(expression_statement),
             .@"return" => |*return_statement| try self.evalReturnStatement(return_statement),
             .block => |*block_statement| try self.evalBlockStatement(block_statement),
+            .@"for" => @panic("TODO: eval for statement"),
         };
     }
 

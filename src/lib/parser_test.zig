@@ -1421,3 +1421,184 @@ test "parse float in infix expression" {
         else => return error.TestUnexpectedResult,
     }
 }
+
+test "parse infinite for loop" {
+    const input = "for {}";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const for_stmt = switch (program.statements.items[0]) {
+        .@"for" => |val| val,
+        else => {
+            std.debug.print("Expected a for statement. Got something else.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    switch (for_stmt.kind) {
+        .infinite => {},
+        else => {
+            std.debug.print("Expected infinite for loop.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    }
+
+    try testing.expectEqual(0, for_stmt.body.statements.items.len);
+}
+
+test "parse c-style for loop" {
+    const input = "for let i = 0; i < 10; i = i + 1 {}";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const for_stmt = switch (program.statements.items[0]) {
+        .@"for" => |val| val,
+        else => {
+            std.debug.print("Expected a for statement. Got something else.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const cs = switch (for_stmt.kind) {
+        .c_style => |val| val,
+        else => {
+            std.debug.print("Expected c-style for loop.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    // initializer: let i = 0
+    try testing.expectEqualStrings("i", cs.initializer.name.value);
+    try testLiteralExpression(&cs.initializer.value.expression, .{ .integer = 0 });
+
+    // condition: i < 10
+    try testInfixExpression(&cs.condition.expression, .{ .string = "i" }, "<", .{ .integer = 10 });
+
+    // update: i = i + 1
+    const assign_exp = switch (cs.update.expression) {
+        .assign_expression => |val| val,
+        else => {
+            std.debug.print("Expected assign expression for update.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+    try testing.expectEqualStrings("i", assign_exp.name.value);
+    try testInfixExpression(&assign_exp.value.expression, .{ .string = "i" }, "+", .{ .integer = 1 });
+
+    try testing.expectEqual(0, for_stmt.body.statements.items.len);
+}
+
+test "parse range for loop" {
+    const input = "for i in 0..10 {}";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const for_stmt = switch (program.statements.items[0]) {
+        .@"for" => |val| val,
+        else => {
+            std.debug.print("Expected a for statement. Got something else.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const iter = switch (for_stmt.kind) {
+        .iterator => |val| val,
+        else => {
+            std.debug.print("Expected iterator for loop.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqualStrings("i", iter.ident.value);
+    try testing.expect(iter.second_ident == null);
+
+    // iterable: 0..10 (infix expression with ".." operator)
+    try testInfixExpression(&iter.iterable.expression, .{ .integer = 0 }, "..", .{ .integer = 10 });
+
+    try testing.expectEqual(0, for_stmt.body.statements.items.len);
+}
+
+test "parse for loop with two iteration variables" {
+    const input = "for key, value in some_collection {}";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const for_stmt = switch (program.statements.items[0]) {
+        .@"for" => |val| val,
+        else => {
+            std.debug.print("Expected a for statement. Got something else.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    const iter = switch (for_stmt.kind) {
+        .iterator => |val| val,
+        else => {
+            std.debug.print("Expected iterator for loop.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testing.expectEqualStrings("key", iter.ident.value);
+    const second = iter.second_ident orelse {
+        std.debug.print("Expected second iteration variable.\n", .{});
+        return error.TestUnexpectedResult;
+    };
+    try testing.expectEqualStrings("value", second.value);
+
+    // iterable: some_collection (identifier)
+    try testIdentifier(&iter.iterable.expression, "some_collection");
+
+    try testing.expectEqual(0, for_stmt.body.statements.items.len);
+}
+
+test "parse range exclusive expression" {
+    const input = "0..10;";
+
+    const allocator = testing.allocator;
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const expr_stmt = switch (program.statements.items[0]) {
+        .expression => |val| val,
+        else => {
+            std.debug.print("Expected an expression statement. Got something else.\n", .{});
+            return error.TestUnexpectedResult;
+        },
+    };
+
+    try testInfixExpression(&expr_stmt.expression, .{ .integer = 0 }, "..", .{ .integer = 10 });
+}

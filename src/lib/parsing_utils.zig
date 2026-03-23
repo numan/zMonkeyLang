@@ -1,6 +1,7 @@
 pub const Precedence = enum(u4) {
     lowest,
     assign, // =
+    range, // ..
     equals, // ==
     less_greater, // <, >
     sum, // +

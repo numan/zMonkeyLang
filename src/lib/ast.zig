@@ -725,6 +725,7 @@ pub const StatementType = union(enum) {
     @"return": ReturnStatement,
     expression: ExpressionStatement,
     block: BlockStatement,
+    @"for": ForStatement,
 
     pub fn toString(self: *const StatementType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.*) {
@@ -738,6 +739,7 @@ pub const StatementType = union(enum) {
             .@"return" => |*ret_stmt| .{ .@"return" = try ret_stmt.clone(allocator) },
             .expression => |*exp_stmt| .{ .expression = try exp_stmt.clone(allocator) },
             .block => |*block_stmt| .{ .block = try block_stmt.clone(allocator) },
+            .@"for" => |*for_stmt| .{ .@"for" = try for_stmt.clone(allocator) },
         };
     }
 
@@ -751,8 +753,100 @@ pub const StatementType = union(enum) {
             },
             .expression => |*exp_stmt| exp_stmt.deinit(allocator),
             .block => |*block_stmt| block_stmt.deinit(allocator),
+            .@"for" => |*for_stmt| for_stmt.deinit(allocator),
         }
     }
+
+    pub const ForStatement = struct {
+        token: Token,
+        body: BlockStatement,
+        kind: Kind,
+
+        const Self = @This();
+
+        pub const Kind = union(enum) {
+            infinite: void,
+            c_style: CStyle,
+            iterator: Iterator,
+        };
+
+        pub const CStyle = struct {
+            initializer: LetStatement,
+            condition: ExpressionStatement,
+            update: ExpressionStatement,
+        };
+
+        pub const Iterator = struct {
+            ident: Identifier,
+            second_ident: ?Identifier,
+            iterable: ExpressionStatement,
+        };
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            try writer.writeAll("for");
+            switch (self.kind) {
+                .infinite => {},
+                .c_style => |*cs| {
+                    try writer.writeAll(" ");
+                    try cs.initializer.toString(writer);
+                    try writer.writeAll(" ");
+                    try cs.condition.toString(writer);
+                    try writer.writeAll("; ");
+                    try cs.update.toString(writer);
+                },
+                .iterator => |*it| {
+                    try writer.writeAll(" ");
+                    try it.ident.toString(writer);
+                    if (it.second_ident) |*second| {
+                        try writer.writeAll(", ");
+                        try second.toString(writer);
+                    }
+                    try writer.writeAll(" in ");
+                    try it.iterable.toString(writer);
+                },
+            }
+            try writer.writeAll(" ");
+            try self.body.toString(writer);
+            try writer.flush();
+        }
+
+        pub fn clone(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!ForStatement {
+            const body = try self.body.clone(allocator);
+            const kind: Kind = switch (self.kind) {
+                .infinite => .infinite,
+                .c_style => |cs| .{ .c_style = .{
+                    .initializer = try cs.initializer.clone(allocator),
+                    .condition = try cs.condition.clone(allocator),
+                    .update = try cs.update.clone(allocator),
+                } },
+                .iterator => |it| .{ .iterator = .{
+                    .ident = try it.ident.clone(allocator),
+                    .second_ident = if (it.second_ident) |si| try si.clone(allocator) else null,
+                    .iterable = try it.iterable.clone(allocator),
+                } },
+            };
+            return .{
+                .token = try self.token.clone(allocator),
+                .body = body,
+                .kind = kind,
+            };
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            switch (self.kind) {
+                .infinite => {},
+                .c_style => |*cs| {
+                    cs.initializer.value.deinit(allocator);
+                    cs.condition.deinit(allocator);
+                    cs.update.deinit(allocator);
+                },
+                .iterator => |*it| {
+                    it.iterable.deinit(allocator);
+                },
+            }
+            self.body.deinit(allocator);
+        }
+    };
 
     pub const BlockStatement = struct {
         token: Token,

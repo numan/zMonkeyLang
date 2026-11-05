@@ -83,9 +83,7 @@ pub fn build(b: *std.Build) void {
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
     // and can be selected like this: `zig build run`
@@ -130,9 +128,7 @@ pub fn build(b: *std.Build) void {
 
     const bench_run_cmd = b.addRunArtifact(bench_exe);
     bench_run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        bench_run_cmd.addArgs(args);
-    }
+    bench_run_cmd.addPassthruArgs();
     const bench_step = b.step("benchmark", "Run the fibonacci benchmark");
     bench_step.dependOn(&bench_run_cmd.step);
 }

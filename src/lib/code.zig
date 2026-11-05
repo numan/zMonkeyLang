@@ -93,7 +93,7 @@ pub fn make(allocator: std.mem.Allocator, op: Opcode, operands: []const usize) !
         const width = def.operand_widths[i];
         inline for (1..9) |w| {
             if (width == w) {
-                const T = std.meta.Int(.unsigned, w * 8);
+                const T = @Int(.unsigned, w * 8);
                 std.mem.writeInt(T, instruction[offset..][0..w], @intCast(operand), .big);
             }
         }
@@ -105,8 +105,8 @@ pub fn make(allocator: std.mem.Allocator, op: Opcode, operands: []const usize) !
 
 pub const MaxOperands = blk: {
     var max_operands: usize = 0;
-    for (std.meta.fields(Opcode)) |field| {
-        const op = @field(Opcode, field.name);
+    for (@typeInfo(Opcode).@"enum".field_names) |name| {
+        const op = @field(Opcode, name);
         const operand_count = definitions.get(op).operand_widths.len;
         if (operand_count > max_operands) {
             max_operands = operand_count;
@@ -139,7 +139,7 @@ pub fn readOperands(def: Definition, ins: Instructions) ReadOperandsResult {
     for (def.operand_widths) |width| {
         inline for (1..9) |w| {
             if (width == w) {
-                const T = std.meta.Int(.unsigned, w * 8);
+                const T = @Int(.unsigned, w * 8);
                 result.operands[result.len] = std.mem.readInt(T, ins[offset..][0..w], .big);
                 result.len += 1;
             }

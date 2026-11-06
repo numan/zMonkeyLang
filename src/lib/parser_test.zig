@@ -1422,6 +1422,60 @@ test "parse float in infix expression" {
     }
 }
 
+fn checkLoopCleanup(allocator: std.mem.Allocator, input: []const u8, malformed: bool) !void {
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    _ = try parser.parse();
+    try testing.expectEqual(malformed, parser.allErrors().len > 0);
+}
+
+test "for loops clean up malformed input and allocation failures" {
+    const malformed = [_][]const u8{
+        "for let i = f(); i < 10;",
+        "for let i = f() i < 10; i = i + 1 {}",
+        "for let i = f(); i < 10 i = i + 1 {}",
+        "for let i = f(); i < 10; i = i + 1",
+        "for i in f()",
+        "for i in (f() {}",
+        "for i in f(1, ) {}",
+        "for i in [f(), ] {}",
+        "for i in {f(): } {}",
+        "for i in a[f() {}",
+        "for i in f() + {}",
+        "for i in !",
+        "for i in f() +",
+        "for i in fn(x, y",
+        "for i in fn(x) f()",
+        "for i in if (f() {}",
+        "for i in if (f()) {} else f()",
+        "for i in {f()}",
+        "for i in {f(): 1 f(): 2} {}",
+        "for i, in f() {}",
+        "for i f() {}",
+        "for i in fn(x) {} { let x = f();",
+        "for i in if (f()) { f(); } else {} {",
+        "for { let x = f();",
+        "for { (a + b) = f(); }",
+    };
+    for (malformed) |input| {
+        try testing.checkAllAllocationFailures(testing.allocator, checkLoopCleanup, .{ input, true });
+    }
+    const valid = [_][]const u8{
+        "for { f(); }",
+        "for let i = f(); i < 10; i = i + 1 { f(i); }",
+        "for key, value in [f(), 2] { value; }",
+        "for i in fn(x) { return x; } {}",
+        "for i in if (f()) { [1]; } else { [2]; } {}",
+        "for i in {f(): a[1]} {}",
+        "for i in -f() {}",
+        "for { for i in 0..10 { f(i); } }",
+    };
+    for (valid) |input| {
+        try testing.checkAllAllocationFailures(testing.allocator, checkLoopCleanup, .{ input, false });
+    }
+}
+
 test "parse infinite for loop" {
     const input = "for {}";
 

@@ -282,6 +282,9 @@ pub const Vm = struct {
         if (left == .float and right == .int) {
             return self.executeFloatComparison(op, left.float.value, @floatFromInt(right.int.value));
         }
+        if (left == .string and right == .string) {
+            return self.executeStringComparison(op, left.string.value, right.string.value);
+        }
 
         const result = switch (op) {
             .equal => std.meta.eql(left, right),
@@ -289,6 +292,15 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
+        self.push(nativeBoolToBooleanObject(result));
+    }
+
+    fn executeStringComparison(self: *Vm, op: code.Opcode, left: []const u8, right: []const u8) !void {
+        const result = switch (op) {
+            .equal => std.mem.eql(u8, left, right),
+            .not_equal => !std.mem.eql(u8, left, right),
+            else => return Errors.TypeMismatch,
+        };
         self.push(nativeBoolToBooleanObject(result));
     }
 

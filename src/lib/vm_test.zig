@@ -156,7 +156,9 @@ fn runVmTests(tests: []const VmTestCase) !void {
         defer symbol_table.deinit();
         var constants = std.ArrayList(Object).empty;
         defer constants.deinit(allocator);
-        var comp = Compiler.init(allocator, &symbol_table, &constants);
+        var constants_arena = std.heap.ArenaAllocator.init(allocator);
+        defer constants_arena.deinit();
+        var comp = Compiler.init(allocator, constants_arena.allocator(), &symbol_table, &constants);
         defer comp.deinit();
         try comp.enterScope();
         try comp.compile(program);
@@ -273,6 +275,11 @@ test "string expressions" {
         .{ .input = "\"monkey\"", .expected = .{ .string = "monkey" } },
         .{ .input = "\"mon\" + \"key\"", .expected = .{ .string = "monkey" } },
         .{ .input = "\"mon\" + \"key\" + \"banana\"", .expected = .{ .string = "monkeybanana" } },
+        .{ .input = "\"a\" == \"a\"", .expected = .{ .boolean = true } },
+        .{ .input = "\"a\" != \"a\"", .expected = .{ .boolean = false } },
+        .{ .input = "\"a\" == \"b\"", .expected = .{ .boolean = false } },
+        .{ .input = "\"a\" != \"b\"", .expected = .{ .boolean = true } },
+        .{ .input = "\"mon\" + \"key\" == \"monkey\"", .expected = .{ .boolean = true } },
     };
 
     try runVmTests(&tests);
@@ -552,7 +559,9 @@ fn runVmErrorTests(tests: []const VmErrorTestCase) !void {
         defer symbol_table.deinit();
         var constants = std.ArrayList(Object).empty;
         defer constants.deinit(allocator);
-        var comp = Compiler.init(allocator, &symbol_table, &constants);
+        var constants_arena = std.heap.ArenaAllocator.init(allocator);
+        defer constants_arena.deinit();
+        var comp = Compiler.init(allocator, constants_arena.allocator(), &symbol_table, &constants);
         defer comp.deinit();
         try comp.enterScope();
         try comp.compile(program);

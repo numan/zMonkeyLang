@@ -10,6 +10,7 @@ const SymbolTable = @import("symbol_table.zig").SymbolTable;
 pub const VmState = struct {
     allocator: std.mem.Allocator,
     vm_arena: std.heap.ArenaAllocator,
+    constants_arena: std.heap.ArenaAllocator,
     symbol_table: SymbolTable,
     constants: std.ArrayList(Object),
     globals: [vm_mod.globals_size]Object,
@@ -18,6 +19,7 @@ pub const VmState = struct {
         return .{
             .allocator = allocator,
             .vm_arena = std.heap.ArenaAllocator.init(allocator),
+            .constants_arena = std.heap.ArenaAllocator.init(allocator),
             .symbol_table = SymbolTable.init(allocator, null),
             .constants = .empty,
             .globals = undefined,
@@ -28,10 +30,11 @@ pub const VmState = struct {
         self.constants.deinit(self.allocator);
         self.symbol_table.deinit();
         self.vm_arena.deinit();
+        self.constants_arena.deinit();
     }
 
     pub fn newCompiler(self: *VmState) !Compiler {
-        var comp = Compiler.init(self.allocator, &self.symbol_table, &self.constants);
+        var comp = Compiler.init(self.allocator, self.constants_arena.allocator(), &self.symbol_table, &self.constants);
         try comp.enterScope();
         return comp;
     }

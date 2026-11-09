@@ -33,6 +33,9 @@ const CompilationScope = struct {
 
 pub const Compiler = struct {
     arena: std.heap.ArenaAllocator,
+    /// Allocates the objects referenced from `constants`, which must outlive
+    /// any use of the constant pool.
+    object_allocator: std.mem.Allocator,
     constants: *std.ArrayList(Object),
     symbol_table: *SymbolTable,
     scopes: std.ArrayList(CompilationScope),
@@ -40,9 +43,10 @@ pub const Compiler = struct {
 
     const Self = @This();
 
-    pub fn init(alloc: std.mem.Allocator, st: *SymbolTable, constants: *std.ArrayList(Object)) Compiler {
+    pub fn init(alloc: std.mem.Allocator, object_allocator: std.mem.Allocator, st: *SymbolTable, constants: *std.ArrayList(Object)) Compiler {
         return Compiler{
             .arena = std.heap.ArenaAllocator.init(alloc),
+            .object_allocator = object_allocator,
             .constants = constants,
             .symbol_table = st,
             .scopes = .empty,
@@ -192,8 +196,8 @@ pub const Compiler = struct {
     }
 
     fn compileStringLiteral(self: *Self, string_literal: *const ExpressionType.StringLiteral) !void {
-        const heap_string_obj = try self.allocator().create(Object.String);
-        heap_string_obj.* = Object.String.init(string_literal.value);
+        const heap_string_obj = try self.object_allocator.create(Object.String);
+        heap_string_obj.* = Object.String.init(try self.object_allocator.dupe(u8, string_literal.value));
         const str_obj: Object = .{ .string = heap_string_obj };
         const index = try self.addConstant(str_obj);
         _ = try self.emit(.constant, &.{index});
@@ -306,8 +310,12 @@ pub const Compiler = struct {
             try self.loadSymbol(free_symbol);
         }
 
-        const compiled_fn = try self.allocator().create(Object.CompiledFunction);
-        compiled_fn.* = Object.CompiledFunction.init(instructions, result.num_locals, fn_lit.parameters.len);
+        const compiled_fn = try self.object_allocator.create(Object.CompiledFunction);
+        compiled_fn.* = Object.CompiledFunction.init(
+            try self.object_allocator.dupe(u8, instructions),
+            result.num_locals,
+            fn_lit.parameters.len,
+        );
         _ = try self.emit(.closure, &.{
             try self.addConstant(.{
                 .compiled_function = compiled_fn,

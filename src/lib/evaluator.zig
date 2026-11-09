@@ -129,8 +129,95 @@ pub const Evaluator = struct {
             .expression => |*expression_statement| try self.evalExpressionStatement(expression_statement),
             .@"return" => |*return_statement| try self.evalReturnStatement(return_statement),
             .block => |*block_statement| try self.evalBlockStatement(block_statement),
-            .@"for" => @panic("TODO: eval for statement"),
+            .@"for" => |*loop| try self.evalForStatement(loop),
         };
+    }
+
+    fn evalForStatement(self: *Self, loop: *const StatementType.ForStatement) EvalError!EvalResult {
+        const previous_env = self.environment;
+        self.environment = try self.gc.allocEnvironment(previous_env);
+        defer self.environment = previous_env;
+
+        switch (loop.kind) {
+            .infinite => while (true) {
+                const result = try self.evalBlockStatement(&loop.body);
+                if (result != .value) return result;
+            },
+            .c_style => |*header| {
+                const initializer = try self.evalLetStatement(&header.initializer);
+                if (initializer != .value) return initializer;
+                while (true) {
+                    const condition_result = try self.evalExpressionStatement(&header.condition);
+                    const condition = unwrapValue(condition_result) orelse return condition_result;
+                    if (!isTruthy(condition)) break;
+                    const body = try self.evalBlockStatement(&loop.body);
+                    if (body != .value) return body;
+                    const update = try self.evalExpressionStatement(&header.update);
+                    if (update != .value) return update;
+                }
+            },
+            .iterator => |*iterator| return self.evalIteratorLoop(iterator, &loop.body),
+        }
+        return wrapResult(.value, NULL);
+    }
+
+    fn evalIteratorLoop(self: *Self, iterator: *const StatementType.ForStatement.Iterator, body: *const StatementType.BlockStatement) EvalError!EvalResult {
+        const iterable_result = try self.evalExpressionStatement(&iterator.iterable);
+        const iterable = unwrapValue(iterable_result) orelse return iterable_result;
+        // Stack-held iterables stay alive because collection only occurs between evaluations.
+        switch (iterable) {
+            .range => |range| {
+                var value = range.start;
+                while (value < range.end) : (value += 1) {
+                    const item: Object = .{ .int = Object.Integer.init(value) };
+                    const first: Object = if (iterator.second_ident != null) blk: {
+                        const index = std.math.cast(i64, @as(i128, value) - range.start) orelse
+                            return wrapResult(.err, try self.errorObj("range index exceeds integer limit", .{}));
+                        break :blk .{ .int = Object.Integer.init(index) };
+                    } else item;
+                    const result = try self.evalIteration(iterator, body, first, item);
+                    if (result != .value) return result;
+                }
+            },
+            .array => |array| {
+                for (array.elements, 0..) |item, index| {
+                    const first: Object = if (iterator.second_ident != null)
+                        .{ .int = Object.Integer.init(@intCast(index)) }
+                    else
+                        item;
+                    const result = try self.evalIteration(iterator, body, first, item);
+                    if (result != .value) return result;
+                }
+            },
+            .hash => |hash| {
+                var entries = hash.pairs.iterator();
+                while (entries.next()) |entry| {
+                    const result = try self.evalIteration(iterator, body, entry.value_ptr.key, entry.value_ptr.value);
+                    if (result != .value) return result;
+                }
+            },
+            .string => |string| {
+                for (string.value, 0..) |byte, index| {
+                    const item: Object = .{ .int = Object.Integer.init(byte) };
+                    const first: Object = if (iterator.second_ident != null)
+                        .{ .int = Object.Integer.init(@intCast(index)) }
+                    else
+                        item;
+                    const result = try self.evalIteration(iterator, body, first, item);
+                    if (result != .value) return result;
+                }
+            },
+            else => return wrapResult(.err, try self.errorObj("not iterable: {s}", .{iterable.typeName()})),
+        }
+        return wrapResult(.value, NULL);
+    }
+
+    fn evalIteration(self: *Self, iterator: *const StatementType.ForStatement.Iterator, body: *const StatementType.BlockStatement, first: Object, second: Object) EvalError!EvalResult {
+        _ = try self.gc.envSet(self.environment, iterator.ident.value, first);
+        if (iterator.second_ident) |ident| {
+            _ = try self.gc.envSet(self.environment, ident.value, second);
+        }
+        return self.evalBlockStatement(body);
     }
 
     fn evalLetStatement(self: *Self, let_statement: *const StatementType.LetStatement) EvalError!EvalResult {
@@ -166,7 +253,10 @@ pub const Evaluator = struct {
             }),
             .function_literal => |*function_literal| try self.evalFunctionLiteral(function_literal),
             .call_expression => |*call_expression| try self.evalCallExpression(call_expression),
-            .identifier => |*identifier_statement| wrapResult(.value, try self.evalIdentifierStatement(identifier_statement)),
+            .identifier => |*identifier_statement| blk: {
+                const value = try self.evalIdentifierStatement(identifier_statement);
+                break :blk if (value == .err) wrapResult(.err, value) else wrapResult(.value, value);
+            },
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
             .prefix_expression => |*prefix_expression| try self.evalPrefixExpression(prefix_expression),
             .infix_expression => |*infix_expression| try self.evalInfixExpression(infix_expression),
@@ -403,6 +493,12 @@ pub const Evaluator = struct {
     }
 
     fn applyInfixOperator(self: *Self, expression: *const ExpressionType.InfixExpression, left: *const Object, right: *const Object) !Object {
+        if (expression.token.token_type == .range_exclusive) {
+            if (left.* != .int or right.* != .int) {
+                return self.errorObj("range bounds must be integers: {s} .. {s}", .{ left.typeName(), right.typeName() });
+            }
+            return .{ .range = .{ .start = left.int.value, .end = right.int.value } };
+        }
         return switch (right.*) {
             .int => |*right_ptr| switch (left.*) {
                 .int => |*left_ptr| evalIntInfixExpression(expression, left_ptr, right_ptr),

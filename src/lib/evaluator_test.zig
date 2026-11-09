@@ -85,10 +85,197 @@ fn testEval(input: []const u8, allocator: std.mem.Allocator, evaluator: *Evaluat
     var lexer = Lexer.init(input);
     var parser = Parser.init(allocator, &lexer);
 
-    const program = try parser.parse();
     defer parser.deinit();
+    const program = try parser.parse();
+    try testing.expectEqual(0, parser.allErrors().len);
 
     return evaluator.eval(program);
+}
+
+test "infinite and c-style loops execute with local scope and control flow" {
+    const cases = [_]struct { input: []const u8, expected: i64 }{
+        .{ .input = "let n = 0; for let i = 0; i < 3; i = i + 1 { n = n * 10 + i; } n;", .expected = 12 },
+        .{ .input = "let n = 0; for let i = 0; false; i = i + 1 { n = 1; } n;", .expected = 0 },
+        .{ .input = "let f = fn() { for { return 7; } }; f();", .expected = 7 },
+        .{ .input = "let n = 0; let f = fn() { for let i = 0; true; n = n + 1 { return 7; } }; f() + n;", .expected = 7 },
+        .{ .input = "let i = 99; for let i = 0; i < 2; i = i + 1 { let hidden = i; } i;", .expected = 99 },
+        .{ .input = "let n = 0; for let i = 0; i < 2; i = i + 1 { for let j = 0; j < 3; j = j + 1 { n = n + 1; } } n;", .expected = 6 },
+        .{ .input = "let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved();", .expected = 3 },
+    };
+    for (cases) |case| {
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+        const env = try collector.allocEnvironment(null);
+        var writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &writer.writer);
+        defer evaluator.deinit();
+        try testIntegerObjectEqual(try testEval(case.input, testing.allocator, &evaluator), case.expected);
+        try testing.expect(evaluator.environment == env);
+        try testing.expect(env.get("hidden") == null);
+    }
+}
+
+test "iterator loops evaluate once and bind ranges arrays hashes and byte strings" {
+    const cases = [_]struct { input: []const u8, expected: i64 }{
+        .{ .input = "let n = 0; for i in 0..4 { n = n + i; } n;", .expected = 6 },
+        .{ .input = "let n = 0; let r = -2..2; for i in r { n = n + i; } n;", .expected = -2 },
+        .{ .input = "let n = 0; for i in 2..2 { n = 1; } for i in 3..1 { n = 2; } n;", .expected = 0 },
+        .{ .input = "let n = 0; for index, value in 5..8 { n = n + index + value; } n;", .expected = 21 },
+        .{ .input = "let n = 0; for value in [2, 3, 4] { n = n + value; } n;", .expected = 9 },
+        .{ .input = "let n = 0; for index, value in [2, 3, 4] { n = n + index * value; } n;", .expected = 11 },
+        .{ .input = "let n = 0; for key in {2: 10, 3: 20} { n = n + key; } n;", .expected = 5 },
+        .{ .input = "let n = 0; for key, value in {2: 10, 3: 20} { n = n + key + value; } n;", .expected = 35 },
+        .{ .input = "let n = 0; for byte in \"ab\" { n = n + byte; } n;", .expected = 195 },
+        .{ .input = "let n = 0; for index, byte in \"ab\" { n = n + index + byte; } n;", .expected = 196 },
+        .{ .input = "let n = 0; for byte in \"é\" { n = n + byte; } n;", .expected = 364 },
+        .{ .input = "let n = 0; for v in [] { n = 1; } for k in {} { n = 2; } for b in \"\" { n = 3; } n;", .expected = 0 },
+        .{ .input = "let calls = 0; let values = fn() { calls = calls + 1; [1, 2, 3]; }; for i in values() {} calls;", .expected = 1 },
+        .{ .input = "let values = [1, 2, 3]; let n = 0; for i in values { values = []; n = n + i; } n;", .expected = 6 },
+        .{ .input = "let i = 99; for i in [1, 2] {} i;", .expected = 99 },
+        .{ .input = "let f = fn() { for i in [7, 8] { return i; } }; f();", .expected = 7 },
+        .{ .input = "let saved = fn() { 0; }; for i in [1, 2, 3] { saved = fn() { i; }; } saved();", .expected = 3 },
+        .{ .input = "let n = 0; for i in 9223372036854775806..9223372036854775807 { n = i; } n;", .expected = 9223372036854775806 },
+    };
+    for (cases) |case| {
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+        const env = try collector.allocEnvironment(null);
+        var writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &writer.writer);
+        defer evaluator.deinit();
+        try testIntegerObjectEqual(try testEval(case.input, testing.allocator, &evaluator), case.expected);
+        try testing.expect(evaluator.environment == env);
+    }
+}
+
+test "loop errors stop execution and restore the environment" {
+    const cases = [_]struct { input: []const u8, message: []const u8 }{
+        .{ .input = "for let i = missing; true; i = 1 {}", .message = "identifier not found: missing" },
+        .{ .input = "for let i = 0; missing; i = 1 {}", .message = "identifier not found: missing" },
+        .{ .input = "for let i = 0; true; i = missing {}", .message = "identifier not found: missing" },
+        .{ .input = "for { missing; }", .message = "identifier not found: missing" },
+        .{ .input = "for i in missing {}", .message = "identifier not found: missing" },
+        .{ .input = "for i in [1, 2] { missing; }", .message = "identifier not found: missing" },
+        .{ .input = "for i in 1 {}", .message = "not iterable: int" },
+        .{ .input = "for i in 1..true {}", .message = "range bounds must be integers: int .. bool" },
+        .{ .input = "for i in 1.5..3 {}", .message = "range bounds must be integers: float .. int" },
+        .{ .input = "for i in missing..3 {}", .message = "identifier not found: missing" },
+        .{ .input = "for let i = 0; false; i = 1 {} i;", .message = "identifier not found: i" },
+    };
+    for (cases) |case| {
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+        const env = try collector.allocEnvironment(null);
+        var writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &writer.writer);
+        defer evaluator.deinit();
+        try testErrorObjectMessageEqual(try testEval(case.input, testing.allocator, &evaluator), case.message);
+        try testing.expect(evaluator.environment == env);
+        try testing.expect(env.get("i") == null);
+        try testIntegerObjectEqual(try testEval("42;", testing.allocator, &evaluator), 42);
+    }
+}
+
+test "completed loops return null and ranges inspect without materializing elements" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+    const env = try collector.allocEnvironment(null);
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &writer.writer);
+    defer evaluator.deinit();
+
+    try testNullObject(try testEval("for let i = 0; i < 2; i = i + 1 { 42; }", testing.allocator, &evaluator));
+    try testNullObject(try testEval("for i in [1, 2] { 42; }", testing.allocator, &evaluator));
+    collector.collect(env);
+    const range = try testEval("-2..9223372036854775807;", testing.allocator, &evaluator);
+    try testing.expectEqualStrings("range", range.typeName());
+    try range.inspect(&writer.writer);
+    try testing.expectEqualStrings("-2..9223372036854775807", writer.written());
+    try testing.expectEqual(0, collector.arrays.items.len);
+}
+
+test "gc preserves shared loop closure bindings then reclaims their cycle" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+    const env = try collector.allocEnvironment(null);
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &writer.writer);
+    defer evaluator.deinit();
+
+    _ = try testEval(
+        \\let first = 0;
+        \\let last = 0;
+        \\for index, value in ["a", "b"] {
+        \\    let capture = fn() { value; };
+        \\    if (index == 0) { first = capture; }
+        \\    last = capture;
+        \\}
+    , testing.allocator, &evaluator);
+    collector.collect(env);
+    try testing.expectEqual(2, collector.trackedEnvironmentCount());
+    try testing.expectEqual(2, collector.trackedFunctionCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testStringObjectEqual(try testEval("first() + last();", testing.allocator, &evaluator), "bb");
+
+    _ = try testEval("first = 0; last = 0;", testing.allocator, &evaluator);
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(0, collector.trackedFunctionCount());
+    try testing.expectEqual(0, collector.trackedStringCount());
+    try testing.expectEqual(0, collector.arrays.items.len);
+}
+
+test "gc reclaims transient loop values without releasing shared globals" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+    const env = try collector.allocEnvironment(null);
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &writer.writer);
+    defer evaluator.deinit();
+
+    try testIntegerObjectEqual(try testEval(
+        \\let keep = "keep";
+        \\let source = [keep, keep, ["nested"], {"k": "v"}];
+        \\let count = 0;
+        \\for item in source { source = []; count = count + 1; }
+        \\for key, value in {"a": keep, "b": keep} {}
+        \\for byte in "é" {}
+        \\count;
+    , testing.allocator, &evaluator), 4);
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(1, collector.trackedStringCount());
+    try testing.expectEqual(1, collector.arrays.items.len);
+    try testing.expectEqual(0, collector.hashes.items.len);
+    const keep = env.get("keep").?;
+    try testStringObjectEqual(keep, "keep");
+    try testing.expectEqual(1, collector.refCount(keep));
+}
+
+test "gc keeps a managed value returned through a loop and function" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+    const env = try collector.allocEnvironment(null);
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &writer.writer);
+    defer evaluator.deinit();
+
+    _ = try testEval("let saved = fn() { for value in [[\"alive\"]] { return fn() { value; }; } }();", testing.allocator, &evaluator);
+    collector.collect(env);
+    try testStringObjectEqual(try testEval("saved()[0];", testing.allocator, &evaluator), "alive");
+    _ = try testEval("saved = 0;", testing.allocator, &evaluator);
+    collector.collect(env);
+    try testing.expectEqual(1, collector.trackedEnvironmentCount());
+    try testing.expectEqual(0, collector.trackedFunctionCount());
+    try testing.expectEqual(0, collector.trackedStringCount());
+    try testing.expectEqual(0, collector.arrays.items.len);
 }
 
 test "eval integer expression" {

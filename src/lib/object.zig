@@ -8,6 +8,7 @@ pub const BuiltinError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub const Object = union(enum) {
     int: Integer,
+    range: Range,
     float: Float,
     bool: Boolean,
     null: Null,
@@ -84,6 +85,17 @@ pub const Object = union(enum) {
 
         pub fn inspect(self: *const Object.Integer, writer: *std.Io.Writer) !void {
             try writer.print("{d}", .{self.value});
+            try writer.flush();
+        }
+    };
+
+    /// Ascending integer range with an exclusive end; no heap ownership.
+    pub const Range = struct {
+        start: i64,
+        end: i64,
+
+        pub fn inspect(self: *const Range, writer: *std.Io.Writer) !void {
+            try writer.print("{d}..{d}", .{ self.start, self.end });
             try writer.flush();
         }
     };

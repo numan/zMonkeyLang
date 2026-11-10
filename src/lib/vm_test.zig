@@ -805,3 +805,73 @@ test "float comparisons" {
 
     try runVmTests(&tests);
 }
+
+test "infinite and c-style loops" {
+    const tests = [_]VmTestCase{
+        .{ .input = "let n = 0; for let i = 0; i < 3; i = i + 1 { n = n * 10 + i; } n;", .expected = .{ .int = 12 } },
+        .{ .input = "let n = 0; for let i = 0; false; i = i + 1 { n = 1; } n;", .expected = .{ .int = 0 } },
+        .{ .input = "let f = fn() { for { return 7; } }; f();", .expected = .{ .int = 7 } },
+        .{ .input = "let n = 0; let f = fn() { for let i = 0; true; n = n + 1 { return 7; } }; f() + n;", .expected = .{ .int = 7 } },
+        .{ .input = "let i = 99; for let i = 0; i < 2; i = i + 1 { let hidden = i; } i;", .expected = .{ .int = 99 } },
+        .{ .input = "let n = 0; for let i = 0; i < 2; i = i + 1 { for let j = 0; j < 3; j = j + 1 { n = n + 1; } } n;", .expected = .{ .int = 6 } },
+        .{ .input = "let f = fn() { let t = 0; for let i = 0; i < 3; i = i + 1 { t = t + 10; } t }; f();", .expected = .{ .int = 30 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "iterator loops over ranges, arrays, hashes, and strings" {
+    const tests = [_]VmTestCase{
+        .{ .input = "let n = 0; for i in 0..4 { n = n + i; } n;", .expected = .{ .int = 6 } },
+        .{ .input = "let n = 0; let r = -2..2; for i in r { n = n + i; } n;", .expected = .{ .int = -2 } },
+        .{ .input = "let n = 0; for i in 2..2 { n = 1; } for i in 3..1 { n = 2; } n;", .expected = .{ .int = 0 } },
+        .{ .input = "let n = 0; for index, value in 5..8 { n = n + index + value; } n;", .expected = .{ .int = 21 } },
+        .{ .input = "let n = 0; for value in [2, 3, 4] { n = n + value; } n;", .expected = .{ .int = 9 } },
+        .{ .input = "let n = 0; for index, value in [2, 3, 4] { n = n + index * value; } n;", .expected = .{ .int = 11 } },
+        .{ .input = "let n = 0; for key in {2: 10, 3: 20} { n = n + key; } n;", .expected = .{ .int = 5 } },
+        .{ .input = "let n = 0; for key, value in {2: 10, 3: 20} { n = n + key + value; } n;", .expected = .{ .int = 35 } },
+        .{ .input = "let n = 0; for byte in \"ab\" { n = n + byte; } n;", .expected = .{ .int = 195 } },
+        .{ .input = "let n = 0; for index, byte in \"ab\" { n = n + index + byte; } n;", .expected = .{ .int = 196 } },
+        .{ .input = "let n = 0; for v in [] { n = 1; } for k in {} { n = 2; } for b in \"\" { n = 3; } n;", .expected = .{ .int = 0 } },
+        .{ .input = "let calls = 0; let values = fn() { calls = calls + 1; [1, 2, 3]; }; for i in values() {} calls;", .expected = .{ .int = 1 } },
+        .{ .input = "let values = [1, 2, 3]; let n = 0; for i in values { values = []; n = n + i; } n;", .expected = .{ .int = 6 } },
+        .{ .input = "let i = 99; for i in [1, 2] {} i;", .expected = .{ .int = 99 } },
+        .{ .input = "let n = 0; for i in 9223372036854775806..9223372036854775807 { n = i; } n;", .expected = .{ .int = 9223372036854775806 } },
+        .{ .input = "let f = fn(xs) { let n = 0; for x in xs { for y in xs { n = n + x * y; } } n }; f([1, 2]);", .expected = .{ .int = 9 } },
+        .{ .input = "let f = fn() { for i in [7, 8] { return i; } }; f() + f();", .expected = .{ .int = 14 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "loops evaluate to null" {
+    const tests = [_]VmTestCase{
+        .{ .input = "for let i = 0; i < 2; i = i + 1 { 42; }", .expected = .null },
+        .{ .input = "fn() { for i in [1] { 42; } }();", .expected = .null },
+        .{ .input = "if (true) { for i in [1] { 42; } }", .expected = .null },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "closures capture loop variables by value" {
+    const tests = [_]VmTestCase{
+        // Top-level loop variables are globals, so the closure reads the final value.
+        .{ .input = "let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved();", .expected = .{ .int = 3 } },
+        // Inside a function they're locals, so the closure keeps the value from when it
+        // was created. The evaluator shares the binding and returns 3 here.
+        .{ .input = "let f = fn() { let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved() }; f();", .expected = .{ .int = 2 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "loop errors" {
+    const tests = [_]VmErrorTestCase{
+        .{ .input = "for i in 1 {}", .expected_error = error.NotIterable },
+        .{ .input = "for i in 1..true {}", .expected_error = error.TypeMismatch },
+        .{ .input = "for i in 1.5..3 {}", .expected_error = error.TypeMismatch },
+    };
+
+    try runVmErrorTests(&tests);
+}

@@ -269,3 +269,47 @@ test "shadowing function name" {
     };
     try expectSymbolEqual(expected, result);
 }
+
+test "block scopes define names in the enclosing frame" {
+    var global = SymbolTable.init(testing.allocator, null);
+    defer global.deinit();
+    _ = try global.define("a");
+
+    var global_block = SymbolTable.initBlock(testing.allocator, &global);
+    defer global_block.deinit();
+    try expectSymbolEqual(.{ .name = "a", .scope = .global, .index = 1 }, try global_block.define("a"));
+    try expectSymbolEqual(.{ .name = "a", .scope = .global, .index = 1 }, global_block.resolve("a").?);
+    try expectSymbolEqual(.{ .name = "a", .scope = .global, .index = 0 }, global.resolve("a").?);
+    try testing.expectEqual(2, global.num_definitions);
+
+    var local = SymbolTable.init(testing.allocator, &global);
+    defer local.deinit();
+    _ = try local.define("b");
+
+    var block = SymbolTable.initBlock(testing.allocator, &local);
+    defer block.deinit();
+    var nested_block = SymbolTable.initBlock(testing.allocator, &block);
+    defer nested_block.deinit();
+    try expectSymbolEqual(.{ .name = "c", .scope = .local, .index = 1 }, try nested_block.define("c"));
+    try testing.expectEqual(2, local.num_definitions);
+
+    try expectSymbolEqual(.{ .name = "b", .scope = .local, .index = 0 }, nested_block.resolve("b").?);
+    try expectSymbolEqual(.{ .name = "a", .scope = .global, .index = 0 }, nested_block.resolve("a").?);
+    try testing.expectEqual(null, local.resolve("c"));
+    try testing.expectEqual(0, nested_block.free_symbols.items.len);
+}
+
+test "functions inside block scopes capture block names as free variables" {
+    var global = SymbolTable.init(testing.allocator, null);
+    defer global.deinit();
+    var local = SymbolTable.init(testing.allocator, &global);
+    defer local.deinit();
+    var block = SymbolTable.initBlock(testing.allocator, &local);
+    defer block.deinit();
+    _ = try block.define("x");
+
+    var inner = SymbolTable.init(testing.allocator, &block);
+    defer inner.deinit();
+    try expectSymbolEqual(.{ .name = "x", .scope = .free, .index = 0 }, inner.resolve("x").?);
+    try expectSymbolEqual(.{ .name = "x", .scope = .local, .index = 0 }, inner.free_symbols.items[0]);
+}

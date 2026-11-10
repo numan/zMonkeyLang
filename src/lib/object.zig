@@ -20,6 +20,7 @@ pub const Object = union(enum) {
     array: *Array,
     hash: *Hash,
     builtin: Builtin,
+    iterator: *Iterator,
 
     const Self = @This();
 
@@ -257,6 +258,75 @@ pub const Object = union(enum) {
                 i += 1;
             }
             try writer.writeAll("}");
+            try writer.flush();
+        }
+    };
+
+    /// Loop cursor over a range, array, string, or hash, used by the VM's iterator opcodes.
+    pub const Iterator = struct {
+        source: Source,
+        index: usize = 0,
+        /// Whether the loop binds two names, as in `for k, v in ...`.
+        binds_pair: bool,
+
+        const Source = union(enum) {
+            range: Range,
+            array: *Array,
+            string: *String,
+            hash: std.AutoHashMap(HashKey, HashPair).Iterator,
+        };
+
+        /// One name binds the item, or the key for hashes. Two names bind the
+        /// index (or key) and then the item (or value).
+        pub const Bindings = struct {
+            first: Object,
+            second: ?Object,
+        };
+
+        /// Returns null when `iterable` can't be iterated.
+        pub fn init(iterable: Object, binds_pair: bool) ?Iterator {
+            const source: Source = switch (iterable) {
+                .range => |range| .{ .range = range },
+                .array => |array| .{ .array = array },
+                .string => |string| .{ .string = string },
+                .hash => |hash| .{ .hash = hash.pairs.iterator() },
+                else => return null,
+            };
+            return .{ .source = source, .binds_pair = binds_pair };
+        }
+
+        pub fn next(self: *Iterator) ?Bindings {
+            const key: Object, const item: Object = switch (self.source) {
+                .range => |range| blk: {
+                    const value = @as(i128, range.start) + self.index;
+                    if (value >= range.end) return null;
+                    break :blk .{ intObject(self.index), .{ .int = Integer.init(@intCast(value)) } };
+                },
+                .array => |array| blk: {
+                    if (self.index >= array.elements.len) return null;
+                    break :blk .{ intObject(self.index), array.elements[self.index] };
+                },
+                .string => |string| blk: {
+                    if (self.index >= string.value.len) return null;
+                    break :blk .{ intObject(self.index), .{ .int = Integer.init(string.value[self.index]) } };
+                },
+                .hash => |*entries| blk: {
+                    const entry = entries.next() orelse return null;
+                    break :blk .{ entry.value_ptr.key, entry.value_ptr.value };
+                },
+            };
+            self.index += 1;
+            if (self.binds_pair) return .{ .first = key, .second = item };
+            return .{ .first = if (self.source == .hash) key else item, .second = null };
+        }
+
+        fn intObject(value: usize) Object {
+            return .{ .int = Integer.init(@intCast(value)) };
+        }
+
+        pub fn inspect(self: *const Iterator, writer: *std.Io.Writer) !void {
+            _ = self;
+            try writer.writeAll("iterator");
             try writer.flush();
         }
     };

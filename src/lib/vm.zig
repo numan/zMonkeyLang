@@ -22,6 +22,7 @@ const Errors = error{
     HashNotHashable,
     UncallableObject,
     WrongArgumentCount,
+    NotIterable,
 } || std.Io.Writer.Error;
 
 pub const Vm = struct {
@@ -264,6 +265,30 @@ pub const Vm = struct {
                     ip = current.ip;
                     ins = current.ins;
                     base_pointer = current.base_pointer;
+                },
+                .range => {
+                    const end = self.pop();
+                    const start = self.pop();
+                    if (start != .int or end != .int) return Errors.TypeMismatch;
+                    self.push(.{ .range = .{ .start = start.int.value, .end = end.int.value } });
+                },
+                .iter_init => {
+                    const name_count = ins[ip];
+                    ip += 1;
+                    const iterator = try self.allocator.create(Object.Iterator);
+                    iterator.* = Object.Iterator.init(self.pop(), name_count == 2) orelse return Errors.NotIterable;
+                    self.push(.{ .iterator = iterator });
+                },
+                .iter_next => {
+                    const exit_pos = std.mem.readInt(u16, ins[ip..][0..2], .big);
+                    ip += 2;
+                    // The iterator stays on the stack until the loop exits.
+                    if (self.stack[self.sp - 1].iterator.next()) |bindings| {
+                        self.push(bindings.first);
+                        if (bindings.second) |second| self.push(second);
+                    } else {
+                        ip = exit_pos;
+                    }
                 },
             }
         }

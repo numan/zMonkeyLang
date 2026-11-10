@@ -1267,3 +1267,195 @@ test "recursive functions" {
 
     try runCompilerTests(allocator, &tests);
 }
+
+fn expectCompileError(allocator: std.mem.Allocator, input: []const u8, expected: anyerror) !void {
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+    const program = try parser.parse();
+    try testing.expectEqual(0, parser.allErrors().len);
+
+    var symbol_table = SymbolTable.init(allocator, null);
+    defer symbol_table.deinit();
+    var constants = std.ArrayList(Object).empty;
+    defer constants.deinit(allocator);
+    var constants_arena = std.heap.ArenaAllocator.init(allocator);
+    defer constants_arena.deinit();
+    var comp = Compiler.init(allocator, constants_arena.allocator(), &symbol_table, &constants);
+    defer comp.deinit();
+    try comp.enterScope();
+    try testing.expectError(expected, comp.compile(program));
+}
+
+test "assignment expressions" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "let x = 1; x = 2;",
+            .expected_constants = &.{ .{ .int = 1 }, .{ .int = 2 } },
+            .expected_instructions = &.{
+                makeOp(a, .constant, &.{0}),
+                makeOp(a, .set_global, &.{0}),
+                makeOp(a, .constant, &.{1}),
+                makeOp(a, .set_global, &.{0}),
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "fn() { let x = 1; x = 2; }",
+            .expected_constants = &.{
+                .{ .int = 1 },
+                .{ .int = 2 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        makeOp(a, .constant, &.{0}),
+                        makeOp(a, .set_local, &.{0}),
+                        makeOp(a, .constant, &.{1}),
+                        makeOp(a, .set_local, &.{0}),
+                        makeOp(a, .get_local, &.{0}),
+                        makeOp(a, .return_value, &.{}),
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                makeOp(a, .closure, &.{ 2, 0 }),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+    try expectCompileError(allocator, "x = 1;", error.UndefinedVariable);
+    try expectCompileError(allocator, "fn() { let x = 1; fn() { x = 2; } }", error.OperationNotSupported);
+}
+
+test "for loops" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "for { 1; }",
+            .expected_constants = &.{.{ .int = 1 }},
+            .expected_instructions = &.{
+                makeOp(a, .constant, &.{0}),
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .jump, &.{0}),
+                makeOp(a, .op_null, &.{}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "for let i = 0; i < 3; i = i + 1 { i; }",
+            .expected_constants = &.{ .{ .int = 0 }, .{ .int = 3 }, .{ .int = 1 } },
+            .expected_instructions = &.{
+                makeOp(a, .constant, &.{0}),
+                makeOp(a, .set_global, &.{0}),
+                // 0006: condition
+                makeOp(a, .constant, &.{1}),
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .greater_than, &.{}),
+                makeOp(a, .jump_not_truthy, &.{37}),
+                // body
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .pop, &.{}),
+                // update
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .constant, &.{2}),
+                makeOp(a, .add, &.{}),
+                makeOp(a, .set_global, &.{0}),
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .jump, &.{6}),
+                // 0037: exit
+                makeOp(a, .op_null, &.{}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "let i = 99; for let i = 0; false; i = 1 {} i;",
+            .expected_constants = &.{ .{ .int = 99 }, .{ .int = 0 }, .{ .int = 1 } },
+            .expected_instructions = &.{
+                makeOp(a, .constant, &.{0}),
+                makeOp(a, .set_global, &.{0}),
+                makeOp(a, .constant, &.{1}),
+                makeOp(a, .set_global, &.{1}),
+                // 0012: condition
+                makeOp(a, .op_false, &.{}),
+                makeOp(a, .jump_not_truthy, &.{29}),
+                makeOp(a, .constant, &.{2}),
+                makeOp(a, .set_global, &.{1}),
+                makeOp(a, .get_global, &.{1}),
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .jump, &.{12}),
+                // 0029: exit
+                makeOp(a, .op_null, &.{}),
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "for x in 0..2 { x; }",
+            .expected_constants = &.{ .{ .int = 0 }, .{ .int = 2 } },
+            .expected_instructions = &.{
+                makeOp(a, .constant, &.{0}),
+                makeOp(a, .constant, &.{1}),
+                makeOp(a, .range, &.{}),
+                makeOp(a, .iter_init, &.{1}),
+                // 0009: next
+                makeOp(a, .iter_next, &.{22}),
+                makeOp(a, .set_global, &.{0}),
+                makeOp(a, .get_global, &.{0}),
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .jump, &.{9}),
+                // 0022: exit, drop the iterator
+                makeOp(a, .pop, &.{}),
+                makeOp(a, .op_null, &.{}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "fn() { for k, v in [5] { k + v; } }",
+            .expected_constants = &.{
+                .{ .int = 5 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        makeOp(a, .constant, &.{0}),
+                        makeOp(a, .array, &.{1}),
+                        makeOp(a, .iter_init, &.{2}),
+                        // 0008: next
+                        makeOp(a, .iter_next, &.{24}),
+                        makeOp(a, .set_local, &.{1}),
+                        makeOp(a, .set_local, &.{0}),
+                        makeOp(a, .get_local, &.{0}),
+                        makeOp(a, .get_local, &.{1}),
+                        makeOp(a, .add, &.{}),
+                        makeOp(a, .pop, &.{}),
+                        makeOp(a, .jump, &.{8}),
+                        // 0024: exit, drop the iterator; the loop's null is the return value
+                        makeOp(a, .pop, &.{}),
+                        makeOp(a, .op_null, &.{}),
+                        makeOp(a, .return_value, &.{}),
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                makeOp(a, .closure, &.{ 1, 0 }),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+    try expectCompileError(allocator, "for let i = 0; false; i = 1 { let hidden = i; } hidden;", error.UndefinedVariable);
+    try expectCompileError(allocator, "for let i = 0; false; i = 1 {} i;", error.UndefinedVariable);
+    try expectCompileError(allocator, "for i in [1] {} i;", error.UndefinedVariable);
+}

@@ -133,20 +133,80 @@ pub const Compiler = struct {
                 try self.compile(expression_statement);
                 _ = try self.emit(.pop, &.{});
             },
-            .let => |*let_stmt| {
-                const sym = try self.symbol_table.define(let_stmt.name.value);
-                try self.compile(&let_stmt.value.expression);
-                const op: code.Opcode = if (sym.scope == .global) .set_global else .set_local;
-                _ = try self.emit(op, &.{sym.index});
-            },
+            .let => |*let_stmt| self.compileLetStatement(let_stmt),
             .@"return" => |*ret_stmt| {
                 if (ret_stmt.value) |*val| {
                     try self.compile(&val.expression);
                 }
                 _ = try self.emit(.return_value, &.{});
             },
+            .@"for" => |*loop| self.compileForStatement(loop),
             else => Error.UnsupportedNodeType,
         };
+    }
+
+    fn compileLetStatement(self: *Self, let_stmt: *const StatementType.LetStatement) !void {
+        const sym = try self.symbol_table.define(let_stmt.name.value);
+        try self.compile(&let_stmt.value.expression);
+        try self.setSymbol(sym);
+    }
+
+    fn compileForStatement(self: *Self, loop: *const StatementType.ForStatement) !void {
+        try self.enterBlockScope();
+        defer self.leaveBlockScope();
+
+        switch (loop.kind) {
+            .infinite => {
+                const loop_start = self.currentPosition();
+                try self.compile(&loop.body);
+                _ = try self.emit(.jump, &.{loop_start});
+            },
+            .c_style => |*header| {
+                try self.compileLetStatement(&header.initializer);
+                const loop_start = self.currentPosition();
+                try self.compile(&header.condition);
+                const exit_jump_pos = try self.emit(.jump_not_truthy, &.{jump_placeholder});
+                try self.compile(&loop.body);
+                try self.compile(&header.update);
+                _ = try self.emit(.pop, &.{});
+                _ = try self.emit(.jump, &.{loop_start});
+                try self.changeOperand(exit_jump_pos, self.currentPosition());
+            },
+            .iterator => |*iterator| {
+                try self.compile(&iterator.iterable);
+                const name_count: usize = if (iterator.second_ident == null) 1 else 2;
+                _ = try self.emit(.iter_init, &.{name_count});
+
+                const loop_start = self.currentPosition();
+                const exit_jump_pos = try self.emit(.iter_next, &.{jump_placeholder});
+                // iter_next pushes the bound values in order, so set the last one first.
+                const first = try self.symbol_table.define(iterator.ident.value);
+                if (iterator.second_ident) |second| {
+                    try self.setSymbol(try self.symbol_table.define(second.value));
+                }
+                try self.setSymbol(first);
+
+                try self.compile(&loop.body);
+                _ = try self.emit(.jump, &.{loop_start});
+                try self.changeOperand(exit_jump_pos, self.currentPosition());
+                _ = try self.emit(.pop, &.{});
+            },
+        }
+
+        // A loop evaluates to null, so a trailing loop yields null as an `if`
+        // branch's value or a function's implicit return.
+        _ = try self.emit(.op_null, &.{});
+        _ = try self.emit(.pop, &.{});
+    }
+
+    fn enterBlockScope(self: *Self) !void {
+        const block = try self.allocator().create(SymbolTable);
+        block.* = SymbolTable.initBlock(self.allocator(), self.symbol_table);
+        self.symbol_table = block;
+    }
+
+    fn leaveBlockScope(self: *Self) void {
+        self.symbol_table = self.symbol_table.outer.?;
     }
 
     fn compileExpression(self: *Self, expression: *const ExpressionType) !void {
@@ -173,7 +233,7 @@ pub const Compiler = struct {
                 try self.compileFunctionLiteral(fn_lit);
             },
             .call_expression => |*val| self.compileCallExpression(val),
-            else => Error.UnsupportedNodeType,
+            .assign_expression => |*val| self.compileAssignExpression(val),
         };
     }
 
@@ -228,6 +288,14 @@ pub const Compiler = struct {
         try self.changeOperand(jump_pos, after_alternative_pos);
     }
 
+    fn compileAssignExpression(self: *Self, assign: *const ExpressionType.AssignExpression) !void {
+        const sym = self.symbol_table.resolve(assign.name.value) orelse return Error.UndefinedVariable;
+        try self.compile(&assign.value.expression);
+        try self.setSymbol(sym);
+        // An assignment evaluates to the assigned value.
+        try self.loadSymbol(sym);
+    }
+
     fn compileIntegerLiteral(self: *Self, int_literal: *const ExpressionType.IntegerLiteral) !void {
         const int_obj: Object = .{ .int = Object.Integer.init(int_literal.value) };
         const index = try self.addConstant(int_obj);
@@ -278,6 +346,7 @@ pub const Compiler = struct {
             .gt => _ = try self.emit(.greater_than, &.{}),
             .eq => _ = try self.emit(.equal, &.{}),
             .not_eq => _ = try self.emit(.not_equal, &.{}),
+            .range_exclusive => _ = try self.emit(.range, &.{}),
             else => return Error.OperationNotSupported,
         }
     }
@@ -334,6 +403,15 @@ pub const Compiler = struct {
         }
     }
 
+    fn setSymbol(self: *Self, symbol: symbol_table.Symbol) !void {
+        switch (symbol.scope) {
+            .global => _ = try self.emit(.set_global, &.{symbol.index}),
+            .local => _ = try self.emit(.set_local, &.{symbol.index}),
+            // Closures capture values, so there is no binding to update.
+            .builtin, .free, .function => return Error.OperationNotSupported,
+        }
+    }
+
     fn compileCallExpression(self: *Self, call_expression: *const ExpressionType.CallExpression) !void {
         try self.compile(call_expression.function);
         for (call_expression.arguments) |*arg| {
@@ -357,6 +435,10 @@ pub const Compiler = struct {
         self.setLastInstruction(op, pos);
 
         return pos;
+    }
+
+    fn currentPosition(self: *Self) usize {
+        return self.currentScope().instructions.items.len;
     }
 
     fn addInstruction(self: *Self, ins: code.Instructions) !usize {

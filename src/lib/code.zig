@@ -33,6 +33,9 @@ pub const Opcode = enum(u8) {
     closure,
     get_free,
     current_closure,
+    range,
+    iter_init,
+    iter_next,
 };
 
 pub const Definition = struct {
@@ -71,6 +74,9 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .closure = .{ .name = "OpClosure", .operand_widths = &.{ 2, 1 } },
     .get_free = .{ .name = "OpGetFree", .operand_widths = &.{1} },
     .current_closure = .{ .name = "OpCurrentClosure", .operand_widths = &.{} },
+    .range = .{ .name = "OpRange", .operand_widths = &.{} },
+    .iter_init = .{ .name = "OpIterInit", .operand_widths = &.{1} }, // number of loop names: 1 or 2
+    .iter_next = .{ .name = "OpIterNext", .operand_widths = &.{2} }, // exit address
 });
 
 pub fn lookup(op: Opcode) Definition {

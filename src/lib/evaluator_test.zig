@@ -1762,6 +1762,26 @@ test "builtin last" {
     }
 }
 
+test "builtin first and last return nested arrays intact" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+
+    const env = try collector.allocEnvironment(null);
+    var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer test_writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+    defer evaluator.deinit();
+
+    const input = "let a = [[1, 2], [3]]; let f = first(a); let l = last(a); len(f) * 10 + len(l);";
+    try testIntegerObjectEqual(try testEval(input, arena.allocator(), &evaluator), 21);
+
+    collector.collect(env);
+    try testIntegerObjectEqual(try testEval("f[1] + l[0] + len(a);", arena.allocator(), &evaluator), 7);
+}
+
 test "builtin rest" {
     {
         // rest([1, 2, 3]) -> [2, 3]

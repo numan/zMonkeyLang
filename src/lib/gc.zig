@@ -153,7 +153,10 @@ pub const Gc = struct {
 
     /// Wraps an externally-created array into GcManaged tracking.
     /// Frees the original *Array and returns the new *Array inside the wrapper.
+    /// Arrays the GC already owns (e.g. an element returned by `first`) are
+    /// returned unchanged.
     pub fn trackArray(self: *Self, arr: *Object.Array) !*Object.Array {
+        if (ownsData(Object.Array, self.arrays.items, arr)) return arr;
         const managed = try self.allocator.create(GcManaged(Object.Array));
         managed.* = .{ .data = arr.* };
         self.allocator.destroy(arr);
@@ -444,6 +447,15 @@ pub const Gc = struct {
             },
             else => {},
         }
+    }
+
+    /// Like `isInList`, but takes a pointer that may not be GC-managed, so it
+    /// compares field addresses instead of recovering a wrapper via `gcMeta`.
+    fn ownsData(comptime T: type, list: []const *GcManaged(T), ptr: *const T) bool {
+        for (list) |managed| {
+            if (&managed.data == ptr) return true;
+        }
+        return false;
     }
 
     fn isInList(comptime T: type, list: []const T, needle: T) bool {

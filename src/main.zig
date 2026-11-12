@@ -1,5 +1,5 @@
 const std = @import("std");
-const lib = @import("zinterpreter_lib");
+const lib = @import("zmonkeylang");
 const repl = lib.repl;
 
 pub fn main(init: std.process.Init) !void {

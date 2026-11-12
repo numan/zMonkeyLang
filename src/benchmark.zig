@@ -1,5 +1,5 @@
 const std = @import("std");
-const lib = @import("zinterpreter_lib");
+const lib = @import("zmonkeylang");
 
 const Lexer = lib.lexer.Lexer;
 const Parser = lib.parser.Parser;

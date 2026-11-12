@@ -1,4 +1,4 @@
-# ZInterpreter
+# zMonkeyLang
 
 This is a interpreter for the monkey programming as described in [Interpreter Book](https://interpreterbook.com/). The book has the implementation in Go, but to scratch my own itch and explore [Zig](https://ziglang.org), I decided to write it in [Zig](https://ziglang.org).
 

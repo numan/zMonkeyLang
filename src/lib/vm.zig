@@ -23,6 +23,8 @@ const Errors = error{
     UncallableObject,
     WrongArgumentCount,
     NotIterable,
+    StackOverflow,
+    FrameOverflow,
 } || std.Io.Writer.Error;
 
 pub const Vm = struct {
@@ -62,7 +64,8 @@ pub const Vm = struct {
         return &self.frames[self.frame_index - 1];
     }
 
-    pub fn pushFrame(self: *Vm, f: Frame) void {
+    pub fn pushFrame(self: *Vm, f: Frame) Errors!void {
+        if (self.frame_index >= max_frames) return Errors.FrameOverflow;
         self.frames[self.frame_index] = f;
         self.frame_index += 1;
     }
@@ -97,7 +100,7 @@ pub const Vm = struct {
                 .constant => {
                     const const_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
-                    self.push(self.constants[const_index]);
+                    try self.push(self.constants[const_index]);
                 },
                 .add, .sub, .mul, .div => {
                     const right = self.pop();
@@ -105,10 +108,10 @@ pub const Vm = struct {
                     try self.executeBinaryOp(op, left, right);
                 },
                 .op_true => {
-                    self.push(True);
+                    try self.push(True);
                 },
                 .op_false => {
-                    self.push(False);
+                    try self.push(False);
                 },
                 .equal, .not_equal, .greater_than => {
                     const right = self.pop();
@@ -131,14 +134,14 @@ pub const Vm = struct {
                     ip += 2;
                     const array = try self.buildArray(self.sp - len, self.sp);
                     self.sp -= len;
-                    self.push(.{ .array = array });
+                    try self.push(.{ .array = array });
                 },
                 .hash => {
                     const num_elements = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
                     const hash = try self.buildHash(self.sp - num_elements, self.sp);
                     self.sp -= num_elements;
-                    self.push(.{ .hash = hash });
+                    try self.push(.{ .hash = hash });
                 },
                 .index => {
                     const index_val = self.pop();
@@ -146,13 +149,13 @@ pub const Vm = struct {
                     try self.executeIndexExpression(left, index_val);
                 },
                 .op_null => {
-                    self.push(Null);
+                    try self.push(Null);
                 },
                 .minus => {
                     const operand = self.pop();
                     switch (operand) {
-                        .int => |v| self.push(.{ .int = Object.Integer.init(-v.value) }),
-                        .float => |v| self.push(.{ .float = Object.Float.init(-v.value) }),
+                        .int => |v| try self.push(.{ .int = Object.Integer.init(-v.value) }),
+                        .float => |v| try self.push(.{ .float = Object.Float.init(-v.value) }),
                         else => return Errors.TypeMismatch,
                     }
                 },
@@ -163,7 +166,7 @@ pub const Vm = struct {
                         .null => True,
                         else => False,
                     };
-                    self.push(result);
+                    try self.push(result);
                 },
                 .set_global => {
                     const global_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
@@ -173,7 +176,7 @@ pub const Vm = struct {
                 .get_global => {
                     const global_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
-                    self.push(self.globals[global_index]);
+                    try self.push(self.globals[global_index]);
                 },
                 .set_local => {
                     const local_index = ins[ip];
@@ -183,13 +186,13 @@ pub const Vm = struct {
                 .get_local => {
                     const local_index = ins[ip];
                     ip += 1;
-                    self.push(self.stack[base_pointer + local_index]);
+                    try self.push(self.stack[base_pointer + local_index]);
                 },
                 .get_free => {
                     const free_index = ins[ip];
                     ip += 1;
                     const closure = self.currentFrame().closure;
-                    self.push(closure.upvalues[free_index].location.*);
+                    try self.push(closure.upvalues[free_index].location.*);
                 },
                 .set_free => {
                     const free_index = ins[ip];
@@ -204,7 +207,7 @@ pub const Vm = struct {
                     const builtin_index = ins[ip];
                     ip += 1;
                     const b: builtins_mod.Builtin = @fromBackingInt(@intCast(builtin_index));
-                    self.push(builtins_mod.getObject(b));
+                    try self.push(builtins_mod.getObject(b));
                 },
                 .closure => {
                     const const_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
@@ -222,7 +225,7 @@ pub const Vm = struct {
 
                     const closure = try self.allocator.create(Object.Closure);
                     closure.* = Object.Closure.init(compiled_fn, upvalues);
-                    self.push(.{ .closure = closure });
+                    try self.push(.{ .closure = closure });
                 },
                 .call => {
                     const num_args = ins[ip];
@@ -237,8 +240,10 @@ pub const Vm = struct {
                             // Save ip back to current frame before switching
                             self.currentFrame().ip = ip;
                             const fn_frame = Frame.init(closure, self.sp - num_args);
-                            self.sp = fn_frame.base_pointer + closure.function.*.num_locals;
-                            self.pushFrame(fn_frame);
+                            const locals_end = fn_frame.base_pointer + closure.function.*.num_locals;
+                            if (locals_end > stack_size) return Errors.StackOverflow;
+                            try self.pushFrame(fn_frame);
+                            self.sp = locals_end;
                             // Reload locals from new frame
                             ip = fn_frame.ip;
                             ins = fn_frame.ins;
@@ -251,7 +256,7 @@ pub const Vm = struct {
                                 .writer_function => |func| try func(self.allocator, args, self.writer),
                             };
                             self.sp = self.sp - num_args - 1;
-                            self.push(result);
+                            try self.push(result);
                         },
                         else => return error.UncallableObject,
                     }
@@ -264,7 +269,7 @@ pub const Vm = struct {
                     const f = self.popFrame();
                     self.closeUpvalues(f.base_pointer);
                     self.sp = f.base_pointer - 1;
-                    self.push(return_val);
+                    try self.push(return_val);
                     // Reload locals from the restored frame
                     const current = self.currentFrame();
                     ip = current.ip;
@@ -275,7 +280,7 @@ pub const Vm = struct {
                     const f = self.popFrame();
                     self.closeUpvalues(f.base_pointer);
                     self.sp = f.base_pointer - 1;
-                    self.push(Null);
+                    try self.push(Null);
                     // Reload locals from the restored frame
                     const current = self.currentFrame();
                     ip = current.ip;
@@ -286,22 +291,22 @@ pub const Vm = struct {
                     const end = self.pop();
                     const start = self.pop();
                     if (start != .int or end != .int) return Errors.TypeMismatch;
-                    self.push(.{ .range = .{ .start = start.int.value, .end = end.int.value } });
+                    try self.push(.{ .range = .{ .start = start.int.value, .end = end.int.value } });
                 },
                 .iter_init => {
                     const name_count = ins[ip];
                     ip += 1;
                     const iterator = try self.allocator.create(Object.Iterator);
                     iterator.* = Object.Iterator.init(self.pop(), name_count == 2) orelse return Errors.NotIterable;
-                    self.push(.{ .iterator = iterator });
+                    try self.push(.{ .iterator = iterator });
                 },
                 .iter_next => {
                     const exit_pos = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
                     // The iterator stays on the stack until the loop exits.
                     if (self.stack[self.sp - 1].iterator.next()) |bindings| {
-                        self.push(bindings.first);
-                        if (bindings.second) |second| self.push(second);
+                        try self.push(bindings.first);
+                        if (bindings.second) |second| try self.push(second);
                     } else {
                         ip = exit_pos;
                     }
@@ -372,7 +377,7 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
-        self.push(nativeBoolToBooleanObject(result));
+        try self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeStringComparison(self: *Vm, op: code.Opcode, left: []const u8, right: []const u8) !void {
@@ -381,7 +386,7 @@ pub const Vm = struct {
             .not_equal => !std.mem.eql(u8, left, right),
             else => return Errors.TypeMismatch,
         };
-        self.push(nativeBoolToBooleanObject(result));
+        try self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeFloatComparison(self: *Vm, op: code.Opcode, left: f64, right: f64) !void {
@@ -391,7 +396,7 @@ pub const Vm = struct {
             .greater_than => left > right,
             else => return Errors.TypeMismatch,
         };
-        self.push(nativeBoolToBooleanObject(result));
+        try self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeIntegerComparison(self: *Vm, op: code.Opcode, left: i64, right: i64) !void {
@@ -402,7 +407,7 @@ pub const Vm = struct {
             else => return Errors.TypeMismatch,
         };
 
-        self.push(nativeBoolToBooleanObject(result));
+        try self.push(nativeBoolToBooleanObject(result));
     }
 
     fn executeBinaryOp(self: *Vm, op: code.Opcode, left: Object, right: Object) !void {
@@ -432,7 +437,7 @@ pub const Vm = struct {
             .div => @divTrunc(left, right),
             else => unreachable,
         };
-        self.push(.{ .int = Object.Integer.init(result) });
+        try self.push(.{ .int = Object.Integer.init(result) });
     }
 
     fn executeBinaryFloatOp(self: *Vm, op: code.Opcode, left: f64, right: f64) !void {
@@ -443,14 +448,14 @@ pub const Vm = struct {
             .div => left / right,
             else => unreachable,
         };
-        self.push(.{ .float = Object.Float.init(result) });
+        try self.push(.{ .float = Object.Float.init(result) });
     }
 
     fn executeStringConcatenation(self: *Vm, left: []const u8, right: []const u8) !void {
         const concat = try std.mem.concat(self.allocator, u8, &.{ left, right });
         const str = try self.allocator.create(Object.String);
         str.* = Object.String.init(concat);
-        self.push(.{ .string = str });
+        try self.push(.{ .string = str });
     }
 
     fn buildArray(self: *Vm, start_index: usize, end_index: usize) !*Object.Array {
@@ -488,8 +493,7 @@ pub const Vm = struct {
 
     fn executeIndexExpression(self: *Vm, left: Object, index_val: Object) !void {
         if (left == .array and index_val == .int) {
-            self.executeArrayIndex(left.array, index_val.int.value);
-            return;
+            return self.executeArrayIndex(left.array, index_val.int.value);
         }
         if (left == .hash) {
             return self.executeHashIndex(left.hash, index_val);
@@ -497,7 +501,7 @@ pub const Vm = struct {
         return Errors.TypeMismatch;
     }
 
-    fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) void {
+    fn executeArrayIndex(self: *Vm, array: *Object.Array, index: i64) Errors!void {
         if (index < 0 or index >= @as(i64, @intCast(array.elements.len))) {
             return self.push(Null);
         }
@@ -508,9 +512,9 @@ pub const Vm = struct {
         const hash_key = index_val.hashKey() orelse return Errors.HashNotHashable;
         const pair = hash.pairs.get(hash_key);
         if (pair) |p| {
-            self.push(p.value);
+            try self.push(p.value);
         } else {
-            self.push(Null);
+            try self.push(Null);
         }
     }
 
@@ -519,7 +523,8 @@ pub const Vm = struct {
         return self.stack[self.sp];
     }
 
-    inline fn push(self: *Vm, obj: Object) void {
+    inline fn push(self: *Vm, obj: Object) Errors!void {
+        if (self.sp >= stack_size) return Errors.StackOverflow;
         self.stack[self.sp] = obj;
         self.sp += 1;
     }

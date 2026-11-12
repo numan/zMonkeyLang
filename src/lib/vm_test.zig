@@ -922,3 +922,13 @@ test "loop errors" {
 
     try runVmErrorTests(&tests);
 }
+
+test "unbounded recursion reports an overflow instead of crashing" {
+    const tests = [_]VmErrorTestCase{
+        .{ .input = "let f = fn() { f(); }; f();", .expected_error = error.FrameOverflow },
+        .{ .input = "let f = fn() { let a = 1; let b = 2; let c = 3; f(); }; f();", .expected_error = error.StackOverflow },
+        .{ .input = "let f = fn(n) { 1 + f(n); }; f(0);", .expected_error = error.StackOverflow },
+    };
+
+    try runVmErrorTests(&tests);
+}

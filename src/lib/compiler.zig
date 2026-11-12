@@ -354,10 +354,6 @@ pub const Compiler = struct {
     fn compileFunctionLiteral(self: *Self, fn_lit: *const ExpressionType.FunctionLiteral) !void {
         try self.enterScope();
 
-        if (fn_lit.name) |name| {
-            _ = try self.symbol_table.defineFunctionName(name);
-        }
-
         for (fn_lit.*.parameters) |*param| {
             _ = try self.symbol_table.define(param.*.value);
         }
@@ -375,8 +371,13 @@ pub const Compiler = struct {
         const result = self.leaveScope();
         const instructions = result.instructions orelse return Error.OperationNotSupported;
 
-        for (free_symbols) |free_symbol| {
-            try self.loadSymbol(free_symbol);
+        const captures = try self.object_allocator.alloc(Object.CompiledFunction.Capture, free_symbols.len);
+        for (free_symbols, captures) |free_symbol, *capture| {
+            capture.* = switch (free_symbol.scope) {
+                .local => .{ .source = .local, .index = @intCast(free_symbol.index) },
+                .free => .{ .source = .upvalue, .index = @intCast(free_symbol.index) },
+                .global, .builtin => unreachable,
+            };
         }
 
         const compiled_fn = try self.object_allocator.create(Object.CompiledFunction);
@@ -384,18 +385,17 @@ pub const Compiler = struct {
             try self.object_allocator.dupe(u8, instructions),
             result.num_locals,
             fn_lit.parameters.len,
+            captures,
         );
         _ = try self.emit(.closure, &.{
             try self.addConstant(.{
                 .compiled_function = compiled_fn,
             }),
-            free_symbols.len,
         });
     }
 
     inline fn loadSymbol(self: *Self, symbol: symbol_table.Symbol) !void {
         switch (symbol.scope) {
-            .function => _ = try self.emit(.current_closure, &.{}),
             .global => _ = try self.emit(.get_global, &.{symbol.index}),
             .local => _ = try self.emit(.get_local, &.{symbol.index}),
             .builtin => _ = try self.emit(.get_builtin, &.{symbol.index}),
@@ -407,8 +407,8 @@ pub const Compiler = struct {
         switch (symbol.scope) {
             .global => _ = try self.emit(.set_global, &.{symbol.index}),
             .local => _ = try self.emit(.set_local, &.{symbol.index}),
-            // Closures capture values, so there is no binding to update.
-            .builtin, .free, .function => return Error.OperationNotSupported,
+            .free => _ = try self.emit(.set_free, &.{symbol.index}),
+            .builtin => return Error.OperationNotSupported,
         }
     }
 
@@ -464,7 +464,7 @@ pub const Compiler = struct {
     }
 
     fn changeOperand(self: *Self, op_pos: usize, operand: usize) !void {
-        const op: code.Opcode = @enumFromInt(self.currentScope().instructions.items[op_pos]);
+        const op: code.Opcode = @fromBackingInt(@intCast(self.currentScope().instructions.items[op_pos]));
         const new_instruction = try code.make(self.allocator(), op, &.{operand});
 
         self.replaceInstruction(op_pos, new_instruction);

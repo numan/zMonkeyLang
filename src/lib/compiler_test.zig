@@ -16,6 +16,10 @@ const ExpectedConstant = union(enum) {
     float: f64,
     string: []const u8,
     instructions: []const code.Instructions,
+    closure: struct {
+        instructions: []const code.Instructions,
+        captures: []const Object.CompiledFunction.Capture,
+    },
 };
 
 const CompilerTestCase = struct {
@@ -63,6 +67,14 @@ fn testConstants(allocator: std.mem.Allocator, expected: []const ExpectedConstan
                     else => return error.TestUnexpectedResult,
                 };
                 try testInstructions(allocator, exp, fn_obj.instructions);
+            },
+            .closure => |exp| {
+                const fn_obj = switch (actual[i]) {
+                    .compiled_function => |f| f,
+                    else => return error.TestUnexpectedResult,
+                };
+                try testInstructions(allocator, exp.instructions, fn_obj.instructions);
+                try testing.expectEqualSlices(Object.CompiledFunction.Capture, exp.captures, fn_obj.captures);
             },
         }
     }
@@ -683,8 +695,8 @@ test "function literal expressions" {
     const op_return_value = makeOp(a, .return_value, &.{});
     const op_pop = makeOp(a, .pop, &.{});
     const op_return = makeOp(a, .op_return, &.{});
-    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
-    const op_closure_0_0 = makeOp(a, .closure, &.{ 0, 0 });
+    const op_closure_2 = makeOp(a, .closure, &.{2});
+    const op_closure_0 = makeOp(a, .closure, &.{0});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -701,7 +713,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_2_0,
+                op_closure_2,
                 op_pop,
             },
         },
@@ -719,7 +731,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_2_0,
+                op_closure_2,
                 op_pop,
             },
         },
@@ -734,7 +746,7 @@ test "function literal expressions" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_0_0,
+                op_closure_0,
                 op_pop,
             },
         },
@@ -760,8 +772,8 @@ test "let statement scopes" {
     const op_return_value = makeOp(a, .return_value, &.{});
     const op_pop = makeOp(a, .pop, &.{});
     const op_add = makeOp(a, .add, &.{});
-    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
-    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
+    const op_closure_1 = makeOp(a, .closure, &.{1});
+    const op_closure_2 = makeOp(a, .closure, &.{2});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -778,7 +790,7 @@ test "let statement scopes" {
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
-                op_closure_1_0,
+                op_closure_1,
                 op_pop,
             },
         },
@@ -796,7 +808,7 @@ test "let statement scopes" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_1_0,
+                op_closure_1,
                 op_pop,
             },
         },
@@ -819,7 +831,7 @@ test "let statement scopes" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_2_0,
+                op_closure_2,
                 op_pop,
             },
         },
@@ -848,8 +860,8 @@ test "function calls" {
     const op_get_local_2 = makeOp(a, .get_local, &.{2});
     const op_constant_2 = makeOp(a, .constant, &.{2});
     const op_constant_3 = makeOp(a, .constant, &.{3});
-    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
-    const op_closure_0_0 = makeOp(a, .closure, &.{ 0, 0 });
+    const op_closure_1 = makeOp(a, .closure, &.{1});
+    const op_closure_0 = makeOp(a, .closure, &.{0});
 
     const tests = [_]CompilerTestCase{
         .{
@@ -864,7 +876,7 @@ test "function calls" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_1_0,
+                op_closure_1,
                 op_call_0,
                 op_pop,
             },
@@ -884,7 +896,7 @@ test "function calls" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_1_0,
+                op_closure_1,
                 op_set_global_0,
                 op_get_global_0,
                 op_call_0,
@@ -906,7 +918,7 @@ test "function calls" {
                 .{ .int = 24 },
             },
             .expected_instructions = &.{
-                op_closure_0_0,
+                op_closure_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_constant_1,
@@ -935,7 +947,7 @@ test "function calls" {
                 .{ .int = 26 },
             },
             .expected_instructions = &.{
-                op_closure_0_0,
+                op_closure_0,
                 op_set_global_0,
                 op_get_global_0,
                 op_constant_1,
@@ -961,14 +973,12 @@ test "closures" {
     const op_get_local_0 = makeOp(a, .get_local, &.{0});
     const op_add = makeOp(a, .add, &.{});
     const op_return_value = makeOp(a, .return_value, &.{});
-    const op_closure_0_1 = makeOp(a, .closure, &.{ 0, 1 });
-    const op_closure_0_2 = makeOp(a, .closure, &.{ 0, 2 });
-    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
-    const op_closure_1_1 = makeOp(a, .closure, &.{ 1, 1 });
-    const op_closure_2_0 = makeOp(a, .closure, &.{ 2, 0 });
-    const op_closure_4_2 = makeOp(a, .closure, &.{ 4, 2 });
-    const op_closure_5_1 = makeOp(a, .closure, &.{ 5, 1 });
-    const op_closure_6_0 = makeOp(a, .closure, &.{ 6, 0 });
+    const op_closure_0 = makeOp(a, .closure, &.{0});
+    const op_closure_1 = makeOp(a, .closure, &.{1});
+    const op_closure_2 = makeOp(a, .closure, &.{2});
+    const op_closure_4 = makeOp(a, .closure, &.{4});
+    const op_closure_5 = makeOp(a, .closure, &.{5});
+    const op_closure_6 = makeOp(a, .closure, &.{6});
     const op_constant_0 = makeOp(a, .constant, &.{0});
     const op_constant_1 = makeOp(a, .constant, &.{1});
     const op_constant_2 = makeOp(a, .constant, &.{2});
@@ -977,6 +987,8 @@ test "closures" {
     const op_get_global_0 = makeOp(a, .get_global, &.{0});
     const op_set_global_0 = makeOp(a, .set_global, &.{0});
     const op_pop = makeOp(a, .pop, &.{});
+    const capture_local_0: Object.CompiledFunction.Capture = .{ .source = .local, .index = 0 };
+    const capture_free_0: Object.CompiledFunction.Capture = .{ .source = .upvalue, .index = 0 };
 
     const tests = [_]CompilerTestCase{
         .{
@@ -989,23 +1001,25 @@ test "closures" {
             ,
             .expected_constants = &.{
                 .{
-                    .instructions = &[_]code.Instructions{
-                        op_get_free_0,
-                        op_get_local_0,
-                        op_add,
-                        op_return_value,
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_get_free_0,
+                            op_get_local_0,
+                            op_add,
+                            op_return_value,
+                        },
+                        .captures = &.{capture_local_0},
                     },
                 },
                 .{
                     .instructions = &[_]code.Instructions{
-                        op_get_local_0,
-                        op_closure_0_1,
+                        op_closure_0,
                         op_return_value,
                     },
                 },
             },
             .expected_instructions = &.{
-                op_closure_1_0,
+                op_closure_1,
                 op_pop,
             },
         },
@@ -1021,33 +1035,36 @@ test "closures" {
             ,
             .expected_constants = &.{
                 .{
-                    .instructions = &[_]code.Instructions{
-                        op_get_free_0,
-                        op_get_free_1,
-                        op_add,
-                        op_get_local_0,
-                        op_add,
-                        op_return_value,
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_get_free_0,
+                            op_get_free_1,
+                            op_add,
+                            op_get_local_0,
+                            op_add,
+                            op_return_value,
+                        },
+                        .captures = &.{ capture_free_0, capture_local_0 },
+                    },
+                },
+                .{
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_closure_0,
+                            op_return_value,
+                        },
+                        .captures = &.{capture_local_0},
                     },
                 },
                 .{
                     .instructions = &[_]code.Instructions{
-                        op_get_free_0,
-                        op_get_local_0,
-                        op_closure_0_2,
-                        op_return_value,
-                    },
-                },
-                .{
-                    .instructions = &[_]code.Instructions{
-                        op_get_local_0,
-                        op_closure_1_1,
+                        op_closure_1,
                         op_return_value,
                     },
                 },
             },
             .expected_instructions = &.{
-                op_closure_2_0,
+                op_closure_2,
                 op_pop,
             },
         },
@@ -1075,35 +1092,38 @@ test "closures" {
                 .{ .int = 77 },
                 .{ .int = 88 },
                 .{
-                    .instructions = &[_]code.Instructions{
-                        op_constant_3,
-                        op_set_local_0,
-                        op_get_global_0,
-                        op_get_free_0,
-                        op_add,
-                        op_get_free_1,
-                        op_add,
-                        op_get_local_0,
-                        op_add,
-                        op_return_value,
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_constant_3,
+                            op_set_local_0,
+                            op_get_global_0,
+                            op_get_free_0,
+                            op_add,
+                            op_get_free_1,
+                            op_add,
+                            op_get_local_0,
+                            op_add,
+                            op_return_value,
+                        },
+                        .captures = &.{ capture_free_0, capture_local_0 },
                     },
                 },
                 .{
-                    .instructions = &[_]code.Instructions{
-                        op_constant_2,
-                        op_set_local_0,
-                        op_get_free_0,
-                        op_get_local_0,
-                        op_closure_4_2,
-                        op_return_value,
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_constant_2,
+                            op_set_local_0,
+                            op_closure_4,
+                            op_return_value,
+                        },
+                        .captures = &.{capture_local_0},
                     },
                 },
                 .{
                     .instructions = &[_]code.Instructions{
                         op_constant_1,
                         op_set_local_0,
-                        op_get_local_0,
-                        op_closure_5_1,
+                        op_closure_5,
                         op_return_value,
                     },
                 },
@@ -1111,7 +1131,7 @@ test "closures" {
             .expected_instructions = &.{
                 op_constant_0,
                 op_set_global_0,
-                op_closure_6_0,
+                op_closure_6,
                 op_pop,
             },
         },
@@ -1179,15 +1199,15 @@ test "recursive functions" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    const op_current_closure = makeOp(a, .current_closure, &.{});
+    const op_get_free_0 = makeOp(a, .get_free, &.{0});
     const op_get_local_0 = makeOp(a, .get_local, &.{0});
     const op_constant_0 = makeOp(a, .constant, &.{0});
     const op_constant_2 = makeOp(a, .constant, &.{2});
     const op_sub = makeOp(a, .sub, &.{});
     const op_call_1 = makeOp(a, .call, &.{1});
     const op_return_value = makeOp(a, .return_value, &.{});
-    const op_closure_1_0 = makeOp(a, .closure, &.{ 1, 0 });
-    const op_closure_3_0 = makeOp(a, .closure, &.{ 3, 0 });
+    const op_closure_1 = makeOp(a, .closure, &.{1});
+    const op_closure_3 = makeOp(a, .closure, &.{3});
     const op_set_global_0 = makeOp(a, .set_global, &.{0});
     const op_get_global_0 = makeOp(a, .get_global, &.{0});
     const op_set_local_0 = makeOp(a, .set_local, &.{0});
@@ -1197,14 +1217,14 @@ test "recursive functions" {
     const tests = [_]CompilerTestCase{
         .{
             .input =
-                \\let countDown = fn(x) { countDown(x - 1); };
-                \\countDown(1);
+            \\let countDown = fn(x) { countDown(x - 1); };
+            \\countDown(1);
             ,
             .expected_constants = &.{
                 .{ .int = 1 },
                 .{
                     .instructions = &[_]code.Instructions{
-                        op_current_closure,
+                        op_get_global_0,
                         op_get_local_0,
                         op_constant_0,
                         op_sub,
@@ -1215,7 +1235,7 @@ test "recursive functions" {
                 .{ .int = 1 },
             },
             .expected_instructions = &.{
-                op_closure_1_0,
+                op_closure_1,
                 op_set_global_0,
                 op_get_global_0,
                 op_constant_2,
@@ -1225,28 +1245,31 @@ test "recursive functions" {
         },
         .{
             .input =
-                \\let wrapper = fn() {
-                \\    let countDown = fn(x) { countDown(x - 1); };
-                \\    countDown(1);
-                \\};
-                \\wrapper();
+            \\let wrapper = fn() {
+            \\    let countDown = fn(x) { countDown(x - 1); };
+            \\    countDown(1);
+            \\};
+            \\wrapper();
             ,
             .expected_constants = &.{
                 .{ .int = 1 },
                 .{
-                    .instructions = &[_]code.Instructions{
-                        op_current_closure,
-                        op_get_local_0,
-                        op_constant_0,
-                        op_sub,
-                        op_call_1,
-                        op_return_value,
+                    .closure = .{
+                        .instructions = &[_]code.Instructions{
+                            op_get_free_0,
+                            op_get_local_0,
+                            op_constant_0,
+                            op_sub,
+                            op_call_1,
+                            op_return_value,
+                        },
+                        .captures = &.{.{ .source = .local, .index = 0 }},
                     },
                 },
                 .{ .int = 1 },
                 .{
                     .instructions = &[_]code.Instructions{
-                        op_closure_1_0,
+                        op_closure_1,
                         op_set_local_0,
                         op_get_local_0,
                         op_constant_2,
@@ -1256,7 +1279,7 @@ test "recursive functions" {
                 },
             },
             .expected_instructions = &.{
-                op_closure_3_0,
+                op_closure_3,
                 op_set_global_0,
                 op_get_global_0,
                 op_call_0,
@@ -1323,7 +1346,34 @@ test "assignment expressions" {
                 },
             },
             .expected_instructions = &.{
-                makeOp(a, .closure, &.{ 2, 0 }),
+                makeOp(a, .closure, &.{2}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+        .{
+            .input = "fn() { let x = 1; fn() { x = 2; } }",
+            .expected_constants = &.{
+                .{ .int = 1 },
+                .{ .int = 2 },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        makeOp(a, .constant, &.{1}),
+                        makeOp(a, .set_free, &.{0}),
+                        makeOp(a, .get_free, &.{0}),
+                        makeOp(a, .return_value, &.{}),
+                    },
+                },
+                .{
+                    .instructions = &[_]code.Instructions{
+                        makeOp(a, .constant, &.{0}),
+                        makeOp(a, .set_local, &.{0}),
+                        makeOp(a, .closure, &.{2}),
+                        makeOp(a, .return_value, &.{}),
+                    },
+                },
+            },
+            .expected_instructions = &.{
+                makeOp(a, .closure, &.{3}),
                 makeOp(a, .pop, &.{}),
             },
         },
@@ -1331,7 +1381,6 @@ test "assignment expressions" {
 
     try runCompilerTests(allocator, &tests);
     try expectCompileError(allocator, "x = 1;", error.UndefinedVariable);
-    try expectCompileError(allocator, "fn() { let x = 1; fn() { x = 2; } }", error.OperationNotSupported);
 }
 
 test "for loops" {
@@ -1448,7 +1497,7 @@ test "for loops" {
                 },
             },
             .expected_instructions = &.{
-                makeOp(a, .closure, &.{ 1, 0 }),
+                makeOp(a, .closure, &.{1}),
                 makeOp(a, .pop, &.{}),
             },
         },

@@ -6,7 +6,6 @@ pub const SymbolScope = enum {
     local,
     builtin,
     free,
-    function,
 };
 
 pub const Symbol = struct {
@@ -56,17 +55,13 @@ pub const SymbolTable = struct {
         return table;
     }
 
-    pub fn defineFunctionName(self: *SymbolTable, name: []const u8) !Symbol {
-        return self.putSymbol(name, .function, 0);
-    }
-
     pub fn resolve(self: *SymbolTable, name: []const u8) ?Symbol {
         if (self.store.get(name)) |symbol| {
             return symbol;
         }
         if (self.outer) |outer| {
             const obj = outer.resolve(name) orelse return null;
-            if (self.is_block or obj.scope == .global or obj.scope == .builtin or obj.scope == .function) {
+            if (self.is_block or obj.scope == .global or obj.scope == .builtin) {
                 return obj;
             }
             return self.defineFree(obj) catch return null;
@@ -75,7 +70,7 @@ pub const SymbolTable = struct {
             return Symbol{
                 .name = name,
                 .scope = .builtin,
-                .index = @intFromEnum(b),
+                .index = @backingInt(b),
             };
         }
         return null;

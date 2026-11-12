@@ -32,7 +32,7 @@ pub const Opcode = enum(u8) {
     get_builtin,
     closure,
     get_free,
-    current_closure,
+    set_free,
     range,
     iter_init,
     iter_next,
@@ -71,9 +71,9 @@ const definitions = std.enums.EnumArray(Opcode, Definition).init(.{
     .set_local = .{ .name = "OpSetLocal", .operand_widths = &.{1} },
     .get_local = .{ .name = "OpGetLocal", .operand_widths = &.{1} },
     .get_builtin = .{ .name = "OpGetBuiltin", .operand_widths = &.{1} },
-    .closure = .{ .name = "OpClosure", .operand_widths = &.{ 2, 1 } },
+    .closure = .{ .name = "OpClosure", .operand_widths = &.{2} },
     .get_free = .{ .name = "OpGetFree", .operand_widths = &.{1} },
-    .current_closure = .{ .name = "OpCurrentClosure", .operand_widths = &.{} },
+    .set_free = .{ .name = "OpSetFree", .operand_widths = &.{1} },
     .range = .{ .name = "OpRange", .operand_widths = &.{} },
     .iter_init = .{ .name = "OpIterInit", .operand_widths = &.{1} }, // number of loop names: 1 or 2
     .iter_next = .{ .name = "OpIterNext", .operand_widths = &.{2} }, // exit address
@@ -92,7 +92,7 @@ pub fn make(allocator: std.mem.Allocator, op: Opcode, operands: []const usize) !
     }
 
     var instruction = try allocator.alloc(u8, instruction_len);
-    instruction[0] = @intFromEnum(op);
+    instruction[0] = @backingInt(op);
 
     var offset: usize = 1;
     for (operands, 0..) |operand, i| {
@@ -163,7 +163,7 @@ pub fn concatInstructions(allocator: std.mem.Allocator, slices: []const []const 
 pub fn toString(instructions: Instructions, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     var i: usize = 0;
     while (i < instructions.len) {
-        const op: Opcode = @enumFromInt(instructions[i]);
+        const op: Opcode = @fromBackingInt(@intCast(instructions[i]));
         const def = lookup(op);
         const result = readOperands(def, instructions[i + 1 ..]);
         try writer.print("{d:0>4} {s}", .{ i, def.name });

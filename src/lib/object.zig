@@ -146,14 +146,31 @@ pub const Object = union(enum) {
         }
     };
 
+    /// A variable captured by a closure. While the declaring function runs,
+    /// `location` points at its stack slot; when that function returns, the
+    /// value moves into `closed` so the closure can keep using it.
+    pub const Upvalue = struct {
+        /// The stack slot while open, or `&state.closed` once closed.
+        location: *Object,
+        state: union(enum) {
+            open: struct {
+                /// The stack slot `location` points at.
+                slot: usize,
+                /// Next open upvalue in the VM's list, ordered by descending stack slot.
+                next: ?*Upvalue,
+            },
+            closed: Object,
+        },
+    };
+
     pub const Closure = struct {
         function: *CompiledFunction,
-        free_vars: []const Object,
+        upvalues: []const *Upvalue,
 
-        pub fn init(function: *CompiledFunction, free_vars: []const Object) Closure {
+        pub fn init(function: *CompiledFunction, upvalues: []const *Upvalue) Closure {
             return Closure{
                 .function = function,
-                .free_vars = free_vars,
+                .upvalues = upvalues,
             };
         }
 
@@ -168,9 +185,21 @@ pub const Object = union(enum) {
         instructions: []const u8,
         num_locals: usize,
         num_parameters: usize,
+        /// Where each of the closure's upvalues comes from, in upvalue order.
+        captures: []const Capture = &.{},
 
-        pub fn init(instructions: []const u8, num_locals: usize, num_parameters: usize) CompiledFunction {
-            return .{ .instructions = instructions, .num_locals = num_locals, .num_parameters = num_parameters };
+        pub const Capture = struct {
+            source: enum {
+                /// A local of the enclosing function, at `index`.
+                local,
+                /// The enclosing closure's upvalue at `index`.
+                upvalue,
+            },
+            index: u8 = 0,
+        };
+
+        pub fn init(instructions: []const u8, num_locals: usize, num_parameters: usize, captures: []const Capture) CompiledFunction {
+            return .{ .instructions = instructions, .num_locals = num_locals, .num_parameters = num_parameters, .captures = captures };
         }
 
         pub fn inspect(self: *const Object.CompiledFunction, writer: *std.Io.Writer) !void {

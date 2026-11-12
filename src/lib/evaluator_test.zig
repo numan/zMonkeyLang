@@ -116,6 +116,36 @@ test "infinite and c-style loops execute with local scope and control flow" {
     }
 }
 
+test "closures share captured variables with their enclosing function" {
+    const cases = [_]struct { input: []const u8, expected: i64 }{
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { x }; x = 2; g() }; f();", .expected = 2 },
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { x = 5; }; g(); x }; f();", .expected = 5 },
+        .{ .input = "let newCounter = fn() { let n = 0; fn() { n = n + 1; n } }; let c = newCounter(); c(); c(); c();", .expected = 3 },
+        .{ .input = "let pair = fn() { let n = 0; [fn() { n = n + 1; }, fn() { n }] }; let p = pair(); p[0](); p[0](); p[1]();", .expected = 2 },
+        .{ .input = "let newCounter = fn() { let n = 0; fn() { n = n + 1; n } }; let a = newCounter(); let b = newCounter(); a(); a(); b();", .expected = 1 },
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { fn() { x = x + 1; } }; let h = g(); h(); h(); x }; f();", .expected = 3 },
+        .{ .input = "let f = fn() { let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved() }; f();", .expected = 3 },
+        .{ .input = "let f = fn() { let saved = fn() { 0; }; for i in [1, 2, 3] { saved = fn() { i; }; } saved() }; f();", .expected = 3 },
+        .{ .input = "let wrapper = fn() { let countDown = fn(x) { if (x == 0) { 0 } else { let next = fn() { countDown(x - 1) }; next() } }; countDown(2) }; wrapper();", .expected = 0 },
+        .{ .input = "let sum = fn(x) { if (x == 0) { 0 } else { fn() { fn() { x + sum(x - 1) } }()() } }; sum(3);", .expected = 6 },
+        // Recursive calls use the function name's current binding.
+        .{ .input = "let f = fn(n) { if (n == 0) { 0 } else { f(n - 1) } }; let g = f; f = fn(n) { 99 }; g(1);", .expected = 99 },
+        .{ .input = "let wrapper = fn() { let f = fn(n) { if (n == 0) { 0 } else { f(n - 1) } }; let g = f; f = fn(n) { 99 }; g(1) }; wrapper();", .expected = 99 },
+        .{ .input = "let f = fn(n) { if (n == 0) { 0 } else { let next = fn() { f(n - 1) }; next() } }; let g = f; f = fn(n) { 99 }; g(1);", .expected = 99 },
+        .{ .input = "let make = fn() { let countDown = fn(x) { if (x == 0) { 0 } else { countDown(x - 1) } }; countDown }; let c = make(); c(3);", .expected = 0 },
+    };
+    for (cases) |case| {
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+        const env = try collector.allocEnvironment(null);
+        var writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &writer.writer);
+        defer evaluator.deinit();
+        try testIntegerObjectEqual(try testEval(case.input, testing.allocator, &evaluator), case.expected);
+    }
+}
+
 test "iterator loops evaluate once and bind ranges arrays hashes and byte strings" {
     const cases = [_]struct { input: []const u8, expected: i64 }{
         .{ .input = "let n = 0; for i in 0..4 { n = n + i; } n;", .expected = 6 },

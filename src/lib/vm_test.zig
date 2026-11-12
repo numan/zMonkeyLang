@@ -338,25 +338,25 @@ test "calling functions without arguments" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let fivePlusTen = fn() { 5 + 10; };
-                \\fivePlusTen();
+            \\let fivePlusTen = fn() { 5 + 10; };
+            \\fivePlusTen();
             ,
             .expected = .{ .int = 15 },
         },
         .{
             .input =
-                \\let one = fn() { 1; };
-                \\let two = fn() { 2; };
-                \\one() + two();
+            \\let one = fn() { 1; };
+            \\let two = fn() { 2; };
+            \\one() + two();
             ,
             .expected = .{ .int = 3 },
         },
         .{
             .input =
-                \\let a = fn() { 1; };
-                \\let b = fn() { a() + 1; };
-                \\let c = fn() { b() + 1; };
-                \\c();
+            \\let a = fn() { 1; };
+            \\let b = fn() { a() + 1; };
+            \\let c = fn() { b() + 1; };
+            \\c();
             ,
             .expected = .{ .int = 3 },
         },
@@ -369,15 +369,15 @@ test "calling functions with return statement" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let earlyExit = fn() { return 99; 100; };
-                \\earlyExit();
+            \\let earlyExit = fn() { return 99; 100; };
+            \\earlyExit();
             ,
             .expected = .{ .int = 99 },
         },
         .{
             .input =
-                \\let earlyExit = fn() { return 99; return 100; };
-                \\earlyExit();
+            \\let earlyExit = fn() { return 99; return 100; };
+            \\earlyExit();
             ,
             .expected = .{ .int = 99 },
         },
@@ -390,17 +390,17 @@ test "calling functions without return value" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let noReturn = fn() { };
-                \\noReturn();
+            \\let noReturn = fn() { };
+            \\noReturn();
             ,
             .expected = .null,
         },
         .{
             .input =
-                \\let noReturn = fn() { };
-                \\let noReturnTwo = fn() { noReturn(); };
-                \\noReturn();
-                \\noReturnTwo();
+            \\let noReturn = fn() { };
+            \\let noReturnTwo = fn() { noReturn(); };
+            \\noReturn();
+            \\noReturnTwo();
             ,
             .expected = .null,
         },
@@ -417,33 +417,33 @@ test "calling functions with bindings" {
         },
         .{
             .input =
-                \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
-                \\oneAndTwo();
+            \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+            \\oneAndTwo();
             ,
             .expected = .{ .int = 3 },
         },
         .{
             .input =
-                \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
-                \\let threeAndFour = fn() { let three = 3; let four = 4; three + four; };
-                \\oneAndTwo() + threeAndFour();
+            \\let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+            \\let threeAndFour = fn() { let three = 3; let four = 4; three + four; };
+            \\oneAndTwo() + threeAndFour();
             ,
             .expected = .{ .int = 10 },
         },
         .{
             .input =
-                \\let firstFoobar = fn() { let foobar = 50; foobar; };
-                \\let secondFoobar = fn() { let foobar = 100; foobar; };
-                \\firstFoobar() + secondFoobar();
+            \\let firstFoobar = fn() { let foobar = 50; foobar; };
+            \\let secondFoobar = fn() { let foobar = 100; foobar; };
+            \\firstFoobar() + secondFoobar();
             ,
             .expected = .{ .int = 150 },
         },
         .{
             .input =
-                \\let globalSeed = 50;
-                \\let minusOne = fn() { let num = 1; globalSeed - num; };
-                \\let minusTwo = fn() { let num = 2; globalSeed - num; };
-                \\minusOne() + minusTwo();
+            \\let globalSeed = 50;
+            \\let minusOne = fn() { let num = 1; globalSeed - num; };
+            \\let minusTwo = fn() { let num = 2; globalSeed - num; };
+            \\minusOne() + minusTwo();
             ,
             .expected = .{ .int = 97 },
         },
@@ -456,9 +456,9 @@ test "first class functions" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let returnsOne = fn() { 1; };
-                \\let returnsOneReturner = fn() { returnsOne; };
-                \\returnsOneReturner()();
+            \\let returnsOne = fn() { 1; };
+            \\let returnsOneReturner = fn() { returnsOne; };
+            \\returnsOneReturner()();
             ,
             .expected = .{ .int = 1 },
         },
@@ -475,62 +475,62 @@ test "calling functions with arguments and bindings" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let identity = fn(a) { a; };
-                \\identity(4);
+            \\let identity = fn(a) { a; };
+            \\identity(4);
             ,
             .expected = .{ .int = 4 },
         },
         .{
             .input =
-                \\let sum = fn(a, b) { a + b; };
-                \\sum(1, 2);
+            \\let sum = fn(a, b) { a + b; };
+            \\sum(1, 2);
             ,
             .expected = .{ .int = 3 },
         },
         .{
             .input =
-                \\let sum = fn(a, b) {
-                \\    let c = a + b;
-                \\    c;
-                \\};
-                \\sum(1, 2);
+            \\let sum = fn(a, b) {
+            \\    let c = a + b;
+            \\    c;
+            \\};
+            \\sum(1, 2);
             ,
             .expected = .{ .int = 3 },
         },
         .{
             .input =
-                \\let sum = fn(a, b) {
-                \\    let c = a + b;
-                \\    c;
-                \\};
-                \\sum(1, 2) + sum(3, 4);
+            \\let sum = fn(a, b) {
+            \\    let c = a + b;
+            \\    c;
+            \\};
+            \\sum(1, 2) + sum(3, 4);
             ,
             .expected = .{ .int = 10 },
         },
         .{
             .input =
-                \\let sum = fn(a, b) {
-                \\    let c = a + b;
-                \\    c;
-                \\};
-                \\let outer = fn() {
-                \\    sum(1, 2) + sum(3, 4);
-                \\};
-                \\outer();
+            \\let sum = fn(a, b) {
+            \\    let c = a + b;
+            \\    c;
+            \\};
+            \\let outer = fn() {
+            \\    sum(1, 2) + sum(3, 4);
+            \\};
+            \\outer();
             ,
             .expected = .{ .int = 10 },
         },
         .{
             .input =
-                \\let globalNum = 10;
-                \\let sum = fn(a, b) {
-                \\    let c = a + b;
-                \\    c + globalNum;
-                \\};
-                \\let outer = fn() {
-                \\    sum(1, 2) + sum(3, 4) + globalNum;
-                \\};
-                \\outer() + globalNum;
+            \\let globalNum = 10;
+            \\let sum = fn(a, b) {
+            \\    let c = a + b;
+            \\    c + globalNum;
+            \\};
+            \\let outer = fn() {
+            \\    sum(1, 2) + sum(3, 4) + globalNum;
+            \\};
+            \\outer() + globalNum;
             ,
             .expected = .{ .int = 50 },
         },
@@ -614,76 +614,95 @@ test "closures" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let newClosure = fn(a) {
-                \\    fn() { a; };
-                \\};
-                \\let closure = newClosure(99);
-                \\closure();
+            \\let newClosure = fn(a) {
+            \\    fn() { a; };
+            \\};
+            \\let closure = newClosure(99);
+            \\closure();
             ,
             .expected = .{ .int = 99 },
         },
         .{
             .input =
-                \\let newAdder = fn(a, b) {
-                \\    fn(c) { a + b + c };
-                \\};
-                \\let adder = newAdder(1, 2);
-                \\adder(8);
+            \\let newAdder = fn(a, b) {
+            \\    fn(c) { a + b + c };
+            \\};
+            \\let adder = newAdder(1, 2);
+            \\adder(8);
             ,
             .expected = .{ .int = 11 },
         },
         .{
             .input =
-                \\let newAdder = fn(a, b) {
-                \\    let c = a + b;
-                \\    fn(d) { c + d };
-                \\};
-                \\let adder = newAdder(1, 2);
-                \\adder(8);
+            \\let newAdder = fn(a, b) {
+            \\    let c = a + b;
+            \\    fn(d) { c + d };
+            \\};
+            \\let adder = newAdder(1, 2);
+            \\adder(8);
             ,
             .expected = .{ .int = 11 },
         },
         .{
             .input =
-                \\let newAdderOuter = fn(a, b) {
-                \\    let c = a + b;
-                \\    fn(d) {
-                \\        let e = d + c;
-                \\        fn(f) { e + f; };
-                \\    };
-                \\};
-                \\let newAdderInner = newAdderOuter(1, 2);
-                \\let adder = newAdderInner(3);
-                \\adder(8);
+            \\let newAdderOuter = fn(a, b) {
+            \\    let c = a + b;
+            \\    fn(d) {
+            \\        let e = d + c;
+            \\        fn(f) { e + f; };
+            \\    };
+            \\};
+            \\let newAdderInner = newAdderOuter(1, 2);
+            \\let adder = newAdderInner(3);
+            \\adder(8);
             ,
             .expected = .{ .int = 14 },
         },
         .{
             .input =
-                \\let a = 1;
-                \\let newAdderOuter = fn(b) {
-                \\    fn(c) {
-                \\        fn(d) { a + b + c + d };
-                \\    };
-                \\};
-                \\let newAdderInner = newAdderOuter(2);
-                \\let adder = newAdderInner(3);
-                \\adder(8);
+            \\let a = 1;
+            \\let newAdderOuter = fn(b) {
+            \\    fn(c) {
+            \\        fn(d) { a + b + c + d };
+            \\    };
+            \\};
+            \\let newAdderInner = newAdderOuter(2);
+            \\let adder = newAdderInner(3);
+            \\adder(8);
             ,
             .expected = .{ .int = 14 },
         },
         .{
             .input =
-                \\let newClosure = fn(a, b) {
-                \\    let one = fn() { a; };
-                \\    let two = fn() { b; };
-                \\    fn() { one() + two(); };
-                \\};
-                \\let closure = newClosure(9, 90);
-                \\closure();
+            \\let newClosure = fn(a, b) {
+            \\    let one = fn() { a; };
+            \\    let two = fn() { b; };
+            \\    fn() { one() + two(); };
+            \\};
+            \\let closure = newClosure(9, 90);
+            \\closure();
             ,
             .expected = .{ .int = 99 },
         },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "closures share captured variables with their enclosing function" {
+    const tests = [_]VmTestCase{
+        // The closure sees assignments made after it was created.
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { x }; x = 2; g() }; f();", .expected = .{ .int = 2 } },
+        // The enclosing function sees assignments made by the closure.
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { x = 5; }; g(); x }; f();", .expected = .{ .int = 5 } },
+        // A captured variable outlives the call that created it.
+        .{ .input = "let newCounter = fn() { let n = 0; fn() { n = n + 1; n } }; let c = newCounter(); c(); c(); c();", .expected = .{ .int = 3 } },
+        // Closures from the same call share one variable, even after it returns.
+        .{ .input = "let pair = fn() { let n = 0; [fn() { n = n + 1; }, fn() { n }] }; let p = pair(); p[0](); p[0](); p[1]();", .expected = .{ .int = 2 } },
+        // Each call gets its own variables.
+        .{ .input = "let newCounter = fn() { let n = 0; fn() { n = n + 1; n } }; let a = newCounter(); let b = newCounter(); a(); a(); b();", .expected = .{ .int = 1 } },
+        // A closure nested two levels deep updates the outermost variable.
+        .{ .input = "let f = fn() { let x = 1; let g = fn() { fn() { x = x + 1; } }; let h = g(); h(); h(); x }; f();", .expected = .{ .int = 3 } },
     };
 
     try runVmTests(&tests);
@@ -693,49 +712,65 @@ test "recursive functions" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let countDown = fn(x) {
-                \\    if (x == 0) {
-                \\        return 0;
-                \\    } else {
-                \\        countDown(x - 1);
-                \\    }
-                \\};
-                \\countDown(1);
+            \\let countDown = fn(x) {
+            \\    if (x == 0) {
+            \\        return 0;
+            \\    } else {
+            \\        countDown(x - 1);
+            \\    }
+            \\};
+            \\countDown(1);
             ,
             .expected = .{ .int = 0 },
         },
         .{
             .input =
-                \\let countDown = fn(x) {
-                \\    if (x == 0) {
-                \\        return 0;
-                \\    } else {
-                \\        countDown(x - 1);
-                \\    }
-                \\};
-                \\let wrapper = fn() {
-                \\    countDown(1);
-                \\};
-                \\wrapper();
+            \\let countDown = fn(x) {
+            \\    if (x == 0) {
+            \\        return 0;
+            \\    } else {
+            \\        countDown(x - 1);
+            \\    }
+            \\};
+            \\let wrapper = fn() {
+            \\    countDown(1);
+            \\};
+            \\wrapper();
             ,
             .expected = .{ .int = 0 },
         },
         .{
             .input =
-                \\let wrapper = fn() {
-                \\    let countDown = fn(x) {
-                \\        if (x == 0) {
-                \\            return 0;
-                \\        } else {
-                \\            countDown(x - 1);
-                \\        }
-                \\    };
-                \\    countDown(1);
-                \\};
-                \\wrapper();
+            \\let wrapper = fn() {
+            \\    let countDown = fn(x) {
+            \\        if (x == 0) {
+            \\            return 0;
+            \\        } else {
+            \\            countDown(x - 1);
+            \\        }
+            \\    };
+            \\    countDown(1);
+            \\};
+            \\wrapper();
             ,
             .expected = .{ .int = 0 },
         },
+        // A closure nested in a named function calls that function, not itself.
+        .{ .input = "let countDown = fn(x) { if (x == 0) { 0 } else { let next = fn() { countDown(x - 1) }; next() } }; countDown(2);", .expected = .{ .int = 0 } },
+        .{ .input = "let wrapper = fn() { let countDown = fn(x) { if (x == 0) { 0 } else { let next = fn() { countDown(x - 1) }; next() } }; countDown(2) }; wrapper();", .expected = .{ .int = 0 } },
+        .{ .input = "let sum = fn(x) { if (x == 0) { 0 } else { fn() { fn() { x + sum(x - 1) } }()() } }; sum(3);", .expected = .{ .int = 6 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "recursive calls use the function name's current binding" {
+    const tests = [_]VmTestCase{
+        .{ .input = "let f = fn(n) { if (n == 0) { 0 } else { f(n - 1) } }; let g = f; f = fn(n) { 99 }; g(1);", .expected = .{ .int = 99 } },
+        .{ .input = "let wrapper = fn() { let f = fn(n) { if (n == 0) { 0 } else { f(n - 1) } }; let g = f; f = fn(n) { 99 }; g(1) }; wrapper();", .expected = .{ .int = 99 } },
+        .{ .input = "let f = fn(n) { if (n == 0) { 0 } else { let next = fn() { f(n - 1) }; next() } }; let g = f; f = fn(n) { 99 }; g(1);", .expected = .{ .int = 99 } },
+        // A local recursive function keeps working after its defining function returns.
+        .{ .input = "let make = fn() { let countDown = fn(x) { if (x == 0) { 0 } else { countDown(x - 1) } }; countDown }; let c = make(); c(3);", .expected = .{ .int = 0 } },
     };
 
     try runVmTests(&tests);
@@ -745,18 +780,18 @@ test "recursive fibonacci" {
     const tests = [_]VmTestCase{
         .{
             .input =
-                \\let fibonacci = fn(x) {
-                \\    if (x == 0) {
-                \\        return 0;
-                \\    } else {
-                \\        if (x == 1) {
-                \\            return 1;
-                \\        } else {
-                \\            fibonacci(x - 1) + fibonacci(x - 2);
-                \\        }
-                \\    }
-                \\};
-                \\fibonacci(15);
+            \\let fibonacci = fn(x) {
+            \\    if (x == 0) {
+            \\        return 0;
+            \\    } else {
+            \\        if (x == 1) {
+            \\            return 1;
+            \\        } else {
+            \\            fibonacci(x - 1) + fibonacci(x - 2);
+            \\        }
+            \\    }
+            \\};
+            \\fibonacci(15);
             ,
             .expected = .{ .int = 610 },
         },
@@ -854,13 +889,11 @@ test "loops evaluate to null" {
     try runVmTests(&tests);
 }
 
-test "closures capture loop variables by value" {
+test "closures share one loop variable across iterations" {
     const tests = [_]VmTestCase{
-        // Top-level loop variables are globals, so the closure reads the final value.
         .{ .input = "let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved();", .expected = .{ .int = 3 } },
-        // Inside a function they're locals, so the closure keeps the value from when it
-        // was created. The evaluator shares the binding and returns 3 here.
-        .{ .input = "let f = fn() { let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved() }; f();", .expected = .{ .int = 2 } },
+        .{ .input = "let f = fn() { let saved = fn() { 0; }; for let i = 0; i < 3; i = i + 1 { saved = fn() { i; }; } saved() }; f();", .expected = .{ .int = 3 } },
+        .{ .input = "let f = fn() { let saved = fn() { 0; }; for i in [1, 2, 3] { saved = fn() { i; }; } saved() }; f();", .expected = .{ .int = 3 } },
     };
 
     try runVmTests(&tests);

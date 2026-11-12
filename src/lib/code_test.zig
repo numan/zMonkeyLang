@@ -36,9 +36,8 @@ test "read operands" {
         .{ .op = .set_local, .operands = &.{255} },
         .{ .op = .get_local, .operands = &.{255} },
         .{ .op = .get_builtin, .operands = &.{255} },
-        .{ .op = .closure, .operands = &.{ 65535, 255 } },
+        .{ .op = .closure, .operands = &.{65535} },
         .{ .op = .get_free, .operands = &.{255} },
-        .{ .op = .current_closure, .operands = &.{} },
     };
 
     for (tests) |tt| {
@@ -86,9 +85,8 @@ test "instructions string" {
         try code.make(testing.allocator, .set_local, &.{1}),
         try code.make(testing.allocator, .get_local, &.{1}),
         try code.make(testing.allocator, .get_builtin, &.{1}),
-        try code.make(testing.allocator, .closure, &.{ 65535, 255 }),
+        try code.make(testing.allocator, .closure, &.{65535}),
         try code.make(testing.allocator, .get_free, &.{1}),
-        try code.make(testing.allocator, .current_closure, &.{}),
     };
     defer for (instructions_list) |ins| {
         testing.allocator.free(ins);
@@ -127,9 +125,8 @@ test "instructions string" {
         \\0045 OpSetLocal 1
         \\0047 OpGetLocal 1
         \\0049 OpGetBuiltin 1
-        \\0051 OpClosure 65535 255
-        \\0055 OpGetFree 1
-        \\0057 OpCurrentClosure
+        \\0051 OpClosure 65535
+        \\0054 OpGetFree 1
         \\
     ;
 
@@ -149,166 +146,161 @@ test "make" {
         .{
             .op = .constant,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.constant), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.constant), 255, 254 },
         },
         .{
             .op = .add,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.add),
+                @backingInt(Opcode.add),
             },
         },
         .{
             .op = .sub,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.sub),
+                @backingInt(Opcode.sub),
             },
         },
         .{
             .op = .mul,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.mul),
+                @backingInt(Opcode.mul),
             },
         },
         .{
             .op = .div,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.div),
+                @backingInt(Opcode.div),
             },
         },
         .{
             .op = .pop,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.pop),
+                @backingInt(Opcode.pop),
             },
         },
         .{
             .op = .op_true,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.op_true),
+                @backingInt(Opcode.op_true),
             },
         },
         .{
             .op = .op_false,
             .operands = &.{},
             .expected = &.{
-                @intFromEnum(Opcode.op_false),
+                @backingInt(Opcode.op_false),
             },
         },
         .{
             .op = .equal,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.equal)},
+            .expected = &.{@backingInt(Opcode.equal)},
         },
         .{
             .op = .not_equal,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.not_equal)},
+            .expected = &.{@backingInt(Opcode.not_equal)},
         },
         .{
             .op = .greater_than,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.greater_than)},
+            .expected = &.{@backingInt(Opcode.greater_than)},
         },
         .{
             .op = .jump_not_truthy,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.jump_not_truthy), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.jump_not_truthy), 255, 254 },
         },
         .{
             .op = .jump,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.jump), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.jump), 255, 254 },
         },
         .{
             .op = .op_null,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.op_null)},
+            .expected = &.{@backingInt(Opcode.op_null)},
         },
         .{
             .op = .minus,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.minus)},
+            .expected = &.{@backingInt(Opcode.minus)},
         },
         .{
             .op = .bang,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.bang)},
+            .expected = &.{@backingInt(Opcode.bang)},
         },
         .{
             .op = .set_global,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.set_global), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.set_global), 255, 254 },
         },
         .{
             .op = .get_global,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.get_global), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.get_global), 255, 254 },
         },
         .{
             .op = .array,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.array), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.array), 255, 254 },
         },
         .{
             .op = .hash,
             .operands = &.{65534},
-            .expected = &.{ @intFromEnum(Opcode.hash), 255, 254 },
+            .expected = &.{ @backingInt(Opcode.hash), 255, 254 },
         },
         .{
             .op = .index,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.index)},
+            .expected = &.{@backingInt(Opcode.index)},
         },
         .{
             .op = .call,
             .operands = &.{254},
-            .expected = &.{ @intFromEnum(Opcode.call), 254 },
+            .expected = &.{ @backingInt(Opcode.call), 254 },
         },
         .{
             .op = .return_value,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.return_value)},
+            .expected = &.{@backingInt(Opcode.return_value)},
         },
         .{
             .op = .op_return,
             .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.op_return)},
+            .expected = &.{@backingInt(Opcode.op_return)},
         },
         .{
             .op = .set_local,
             .operands = &.{255},
-            .expected = &.{ @intFromEnum(Opcode.set_local), 255 },
+            .expected = &.{ @backingInt(Opcode.set_local), 255 },
         },
         .{
             .op = .get_local,
             .operands = &.{255},
-            .expected = &.{ @intFromEnum(Opcode.get_local), 255 },
+            .expected = &.{ @backingInt(Opcode.get_local), 255 },
         },
         .{
             .op = .get_builtin,
             .operands = &.{255},
-            .expected = &.{ @intFromEnum(Opcode.get_builtin), 255 },
+            .expected = &.{ @backingInt(Opcode.get_builtin), 255 },
         },
         .{
             .op = .closure,
-            .operands = &.{ 65534, 255 },
-            .expected = &.{ @intFromEnum(Opcode.closure), 255, 254, 255 },
+            .operands = &.{65534},
+            .expected = &.{ @backingInt(Opcode.closure), 255, 254 },
         },
         .{
             .op = .get_free,
             .operands = &.{255},
-            .expected = &.{ @intFromEnum(Opcode.get_free), 255 },
-        },
-        .{
-            .op = .current_closure,
-            .operands = &.{},
-            .expected = &.{@intFromEnum(Opcode.current_closure)},
+            .expected = &.{ @backingInt(Opcode.get_free), 255 },
         },
     };
 

@@ -34,6 +34,8 @@ pub const Vm = struct {
     frames: [max_frames]Frame = undefined,
     frame_index: usize,
     writer: *std.Io.Writer,
+    /// Upvalues that still point at stack slots, ordered by descending slot.
+    open_upvalues: ?*Object.Upvalue = null,
 
     pub fn init(bytecode: Bytecode, globals: *[globals_size]Object, allocator: std.mem.Allocator, writer: *std.Io.Writer) !Vm {
         const main_fn = try allocator.create(Object.CompiledFunction);
@@ -81,12 +83,15 @@ pub const Vm = struct {
     }
 
     pub fn run(self: *Vm) !void {
+        // Closures created before an error may outlive this VM's stack.
+        errdefer self.closeUpvalues(0);
+
         var ip = self.currentFrame().ip;
         var ins = self.currentFrame().ins;
         var base_pointer = self.currentFrame().base_pointer;
 
         while (ip < ins.len) {
-            const op: code.Opcode = @enumFromInt(ins[ip]);
+            const op: code.Opcode = @fromBackingInt(@intCast(ins[ip]));
             ip += 1;
             switch (op) {
                 .constant => {
@@ -184,7 +189,13 @@ pub const Vm = struct {
                     const free_index = ins[ip];
                     ip += 1;
                     const closure = self.currentFrame().closure;
-                    self.push(closure.free_vars[free_index]);
+                    self.push(closure.upvalues[free_index].location.*);
+                },
+                .set_free => {
+                    const free_index = ins[ip];
+                    ip += 1;
+                    const closure = self.currentFrame().closure;
+                    closure.upvalues[free_index].location.* = self.pop();
                 },
                 .pop => {
                     _ = self.pop();
@@ -192,25 +203,25 @@ pub const Vm = struct {
                 .get_builtin => {
                     const builtin_index = ins[ip];
                     ip += 1;
-                    const b: builtins_mod.Builtin = @enumFromInt(builtin_index);
+                    const b: builtins_mod.Builtin = @fromBackingInt(@intCast(builtin_index));
                     self.push(builtins_mod.getObject(b));
-                },
-                .current_closure => {
-                    const current_closure = self.currentFrame().closure;
-                    self.push(.{ .closure = current_closure });
                 },
                 .closure => {
                     const const_index = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
-                    const num_free = ins[ip];
-                    ip += 1;
-
-                    const free_vars = try self.allocator.dupe(Object, self.stack[self.sp - num_free .. self.sp]);
-                    self.sp -= num_free;
 
                     const compiled_fn = self.constants[const_index].compiled_function;
+                    const upvalues = try self.allocator.alloc(*Object.Upvalue, compiled_fn.captures.len);
+                    const enclosing = self.currentFrame().closure;
+                    for (compiled_fn.captures, upvalues) |capture, *upvalue| {
+                        upvalue.* = switch (capture.source) {
+                            .local => try self.captureUpvalue(base_pointer + capture.index),
+                            .upvalue => enclosing.upvalues[capture.index],
+                        };
+                    }
+
                     const closure = try self.allocator.create(Object.Closure);
-                    closure.* = Object.Closure.init(compiled_fn, free_vars);
+                    closure.* = Object.Closure.init(compiled_fn, upvalues);
                     self.push(.{ .closure = closure });
                 },
                 .call => {
@@ -248,6 +259,7 @@ pub const Vm = struct {
                 .return_value => {
                     const return_val = self.pop();
                     const f = self.popFrame();
+                    self.closeUpvalues(f.base_pointer);
                     self.sp = f.base_pointer - 1;
                     self.push(return_val);
                     // Reload locals from the restored frame
@@ -258,6 +270,7 @@ pub const Vm = struct {
                 },
                 .op_return => {
                     const f = self.popFrame();
+                    self.closeUpvalues(f.base_pointer);
                     self.sp = f.base_pointer - 1;
                     self.push(Null);
                     // Reload locals from the restored frame
@@ -291,6 +304,45 @@ pub const Vm = struct {
                     }
                 },
             }
+        }
+    }
+
+    /// Returns the open upvalue for `slot`, creating it if needed, so every
+    /// closure that captures the same variable shares one upvalue.
+    fn captureUpvalue(self: *Vm, slot: usize) !*Object.Upvalue {
+        var previous: ?*Object.Upvalue = null;
+        var current = self.open_upvalues;
+        while (current) |upvalue| {
+            if (upvalue.state.open.slot <= slot) break;
+            previous = upvalue;
+            current = upvalue.state.open.next;
+        }
+        if (current) |upvalue| {
+            if (upvalue.state.open.slot == slot) return upvalue;
+        }
+
+        const created = try self.allocator.create(Object.Upvalue);
+        created.* = .{
+            .location = &self.stack[slot],
+            .state = .{ .open = .{ .slot = slot, .next = current } },
+        };
+        if (previous) |p| {
+            p.state.open.next = created;
+        } else {
+            self.open_upvalues = created;
+        }
+        return created;
+    }
+
+    /// Moves the values of open upvalues at or above stack index `first_slot`
+    /// off the stack.
+    fn closeUpvalues(self: *Vm, first_slot: usize) void {
+        while (self.open_upvalues) |upvalue| {
+            const open = upvalue.state.open;
+            if (open.slot < first_slot) break;
+            self.open_upvalues = open.next;
+            upvalue.state = .{ .closed = upvalue.location.* };
+            upvalue.location = &upvalue.state.closed;
         }
     }
 

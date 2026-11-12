@@ -261,6 +261,36 @@ test "parse let error" {
     }
 }
 
+test "out-of-range integer literals are reported as parse errors" {
+    const input =
+        \\let x = 99999999999999999999;
+        \\1 + 9223372036854775808;
+        \\9223372036854775807;
+    ;
+
+    var lexer = Lexer.init(input);
+    var parser = Parser.init(testing.allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    const errors = parser.allErrors();
+
+    // Each failed statement also leaves its `;` behind, which the parser's
+    // recovery reports separately; only the literal errors matter here.
+    var literal_errors: std.ArrayList([]const u8) = .empty;
+    defer literal_errors.deinit(testing.allocator);
+    for (errors) |err| {
+        if (std.mem.startsWith(u8, err, "could not parse")) try literal_errors.append(testing.allocator, err);
+    }
+
+    try testing.expectEqual(2, literal_errors.items.len);
+    try testing.expectEqualStrings("could not parse \"99999999999999999999\" as integer", literal_errors.items[0]);
+    try testing.expectEqualStrings("could not parse \"9223372036854775808\" as integer", literal_errors.items[1]);
+
+    const last = program.statements.items[program.statements.items.len - 1];
+    try testIntegerLiteral(&last.expression.expression, std.math.maxInt(i64));
+}
+
 test "parser let" {
     const input =
         \\let x = 5;

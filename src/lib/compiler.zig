@@ -137,6 +137,8 @@ pub const Compiler = struct {
             .@"return" => |*ret_stmt| {
                 if (ret_stmt.value) |*val| {
                     try self.compile(&val.expression);
+                } else {
+                    _ = try self.emit(.op_null, &.{});
                 }
                 _ = try self.emit(.return_value, &.{});
             },

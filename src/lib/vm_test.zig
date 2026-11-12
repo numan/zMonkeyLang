@@ -386,6 +386,20 @@ test "calling functions with return statement" {
     try runVmTests(&tests);
 }
 
+test "top-level return halts the program with its value" {
+    const tests = [_]VmTestCase{
+        .{ .input = "return 10;", .expected = .{ .int = 10 } },
+        .{ .input = "return 10; 9;", .expected = .{ .int = 10 } },
+        .{ .input = "9; return 2 * 5; 9;", .expected = .{ .int = 10 } },
+        .{ .input = "if (10 > 1) { if (10 > 1) { return 10; } return 1; }", .expected = .{ .int = 10 } },
+        .{ .input = "return;", .expected = .null },
+        .{ .input = "if (10 > 1) { return; } 5;", .expected = .null },
+        .{ .input = "let f = fn() { let a = 1; return; }; f();", .expected = .null },
+    };
+
+    try runVmTests(&tests);
+}
+
 test "calling functions without return value" {
     const tests = [_]VmTestCase{
         .{

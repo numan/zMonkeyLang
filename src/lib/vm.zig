@@ -258,6 +258,9 @@ pub const Vm = struct {
                 },
                 .return_value => {
                     const return_val = self.pop();
+                    // A top-level return halts the program, leaving its value as
+                    // the last popped element.
+                    if (self.frame_index == 1) return;
                     const f = self.popFrame();
                     self.closeUpvalues(f.base_pointer);
                     self.sp = f.base_pointer - 1;

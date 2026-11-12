@@ -7,7 +7,7 @@ const Token = @import("./token.zig").Token;
 const TokenType = @import("./token.zig").TokenType;
 const Precedence = @import("./parsing_utils.zig").Precedence;
 
-pub const ParseError = error{ InvalidCharacter, Overflow, OutOfMemory };
+pub const ParseError = error{OutOfMemory};
 
 const PrefixParseFn = *const fn (*Parser) ParseError!?ast.StatementType.ExpressionStatement;
 const InfixParseFn = *const fn (*Parser, *ast.StatementType.ExpressionStatement) ParseError!?ast.StatementType.ExpressionStatement;
@@ -253,6 +253,12 @@ pub const Parser = struct {
         try self.errors.append(self.allocator, msg);
     }
 
+    fn literalError(self: *Self, kind: []const u8) ParseError!void {
+        const msg = try std.fmt.allocPrint(self.allocator, "could not parse \"{s}\" as {s}", .{ self.current_token.ch, kind });
+        errdefer self.allocator.free(msg);
+        try self.errors.append(self.allocator, msg);
+    }
+
     pub fn allErrors(self: *Self) [][]const u8 {
         return self.errors.items;
     }
@@ -262,12 +268,18 @@ pub const Parser = struct {
     }
 
     fn parseIntegerLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
-        const val = try std.fmt.parseInt(i64, parser.current_token.ch, 10);
+        const val = std.fmt.parseInt(i64, parser.current_token.ch, 10) catch {
+            try parser.literalError("integer");
+            return null;
+        };
         return ast.StatementType.ExpressionStatement.initIntegerLiteralExpression(parser.current_token, val);
     }
 
     fn parseFloatLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
-        const val = std.fmt.parseFloat(f64, parser.current_token.ch) catch return error.InvalidCharacter;
+        const val = std.fmt.parseFloat(f64, parser.current_token.ch) catch {
+            try parser.literalError("float");
+            return null;
+        };
         return ast.StatementType.ExpressionStatement.initFloatLiteralExpression(parser.current_token, val);
     }
 

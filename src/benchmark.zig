@@ -28,7 +28,7 @@ const input =
 ;
 
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.gpa;
+    const allocator = std.heap.smp_allocator;
 
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);

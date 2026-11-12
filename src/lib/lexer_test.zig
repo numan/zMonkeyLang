@@ -280,3 +280,31 @@ test "for loop with two iteration variables" {
         try testing.expectEqualStrings(expected_output[1], tkn.ch);
     }
 }
+
+test "identifiers can contain digits after the first character" {
+    const input =
+        \\let x1 = item_2 + for3;
+        \\1abc
+    ;
+
+    const tests = [_]struct { TokenType, []const u8 }{
+        .{ .let, "let" },
+        .{ .iden, "x1" },
+        .{ .assign, "=" },
+        .{ .iden, "item_2" },
+        .{ .plus, "+" },
+        .{ .iden, "for3" },
+        .{ .semicolon, ";" },
+        .{ .int, "1" },
+        .{ .iden, "abc" },
+        .{ .eof, "eof" },
+    };
+
+    var lexer = Lexer.init(input);
+
+    for (tests) |expected_output| {
+        const tkn = lexer.nextToken();
+        try testing.expectEqual(expected_output[0], tkn.token_type);
+        try testing.expectEqualStrings(expected_output[1], tkn.ch);
+    }
+}

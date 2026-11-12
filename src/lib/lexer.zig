@@ -33,7 +33,7 @@ pub const Lexer = struct {
         const start = self.position;
 
         while (self.ch) |ch| {
-            if (!isLetter(ch)) break;
+            if (!isLetter(ch) and !std.ascii.isDigit(ch)) break;
             self.readCharacter();
         }
 

@@ -89,6 +89,7 @@ pub const ExpressionType = union(enum) {
     integer_literal: IntegerLiteral,
     float_literal: FloatLiteral,
     boolean_literal: BooleanLiteral,
+    null_literal: NullLiteral,
     function_literal: FunctionLiteral,
     prefix_expression: PrefixExpression,
     infix_expression: InfixExpression,
@@ -122,6 +123,9 @@ pub const ExpressionType = union(enum) {
             .boolean_literal => |lit| .{ .boolean_literal = .{
                 .token = try lit.token.clone(allocator),
                 .value = lit.value,
+            } },
+            .null_literal => |lit| .{ .null_literal = .{
+                .token = try lit.token.clone(allocator),
             } },
             .string_literal => |lit| .{ .string_literal = .{
                 .token = try lit.token.clone(allocator),
@@ -427,6 +431,20 @@ pub const ExpressionType = union(enum) {
         pub fn init(obj: Token, val: bool) Self {
             return .{ .token = obj, .value = val };
         }
+
+        pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
+            _ = try writer.write(self.tokenLiteral());
+            try writer.flush();
+        }
+
+        pub fn tokenLiteral(self: *const Self) []const u8 {
+            return self.token.ch;
+        }
+    };
+
+    pub const NullLiteral = struct {
+        const Self = @This();
+        token: Token,
 
         pub fn toString(self: *const Self, writer: *std.Io.Writer) !void {
             _ = try writer.write(self.tokenLiteral());

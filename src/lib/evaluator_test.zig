@@ -517,6 +517,45 @@ test "eval boolean" {
     }
 }
 
+test "null literal" {
+    const Expected = union(enum) { null, boolean: bool, int: i64, err: []const u8 };
+    const cases = [_]struct { input: []const u8, expected: Expected }{
+        .{ .input = "null", .expected = .null },
+        .{ .input = "null == null", .expected = .{ .boolean = true } },
+        .{ .input = "null != null", .expected = .{ .boolean = false } },
+        .{ .input = "5 == null", .expected = .{ .boolean = false } },
+        .{ .input = "null != \"a\"", .expected = .{ .boolean = true } },
+        .{ .input = "[][0] == null", .expected = .{ .boolean = true } },
+        .{ .input = "!null", .expected = .{ .boolean = true } },
+        .{ .input = "if (null) { 1 } else { 2 }", .expected = .{ .int = 2 } },
+        .{ .input = "let x = null; x = 3; x", .expected = .{ .int = 3 } },
+        .{ .input = "let f = fn() { null }; f() == null", .expected = .{ .boolean = true } },
+        .{ .input = "null + 1", .expected = .{ .err = "type mismatch: null + int" } },
+        .{ .input = "null < null", .expected = .{ .err = "unknown operator null < null" } },
+        .{ .input = "{null: 1}", .expected = .{ .err = "unusable as hash key: null" } },
+    };
+
+    for (cases) |case| {
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+        var collector = Gc.init(testing.allocator);
+        defer collector.deinit();
+        const env = try collector.allocEnvironment(null);
+        var test_writer = std.Io.Writer.Allocating.init(testing.allocator);
+        defer test_writer.deinit();
+        var evaluator = Evaluator.init(env, &collector, &test_writer.writer);
+        defer evaluator.deinit();
+
+        const evaluated = try testEval(case.input, arena.allocator(), &evaluator);
+        switch (case.expected) {
+            .null => try testNullObject(evaluated),
+            .boolean => |expected| try testBooleanObjectEqual(evaluated, expected),
+            .int => |expected| try testIntegerObjectEqual(evaluated, expected),
+            .err => |expected| try testErrorObjectMessageEqual(evaluated, expected),
+        }
+    }
+}
+
 test "bang operator" {
     const tests = [_]struct {
         input: []const u8,

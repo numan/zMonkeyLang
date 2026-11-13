@@ -91,6 +91,32 @@ pub const SymbolTable = struct {
         return symbol;
     }
 
+    /// The table's names and definition count at one point in time.
+    pub const Snapshot = struct {
+        store: std.StringHashMap(Symbol),
+        num_definitions: usize,
+
+        /// Frees a snapshot that won't be restored.
+        pub fn deinit(self: *Snapshot) void {
+            self.store.deinit();
+        }
+    };
+
+    pub fn snapshot(self: *const SymbolTable) !Snapshot {
+        return .{ .store = try self.store.clone(), .num_definitions = self.num_definitions };
+    }
+
+    /// Forgets every definition made since `saved` was taken. Takes ownership of `saved`.
+    pub fn restore(self: *SymbolTable, saved: Snapshot) void {
+        var names = self.store.keyIterator();
+        while (names.next()) |name| {
+            if (!saved.store.contains(name.*)) self.store.allocator.free(name.*);
+        }
+        self.store.deinit();
+        self.store = saved.store;
+        self.num_definitions = saved.num_definitions;
+    }
+
     pub fn deinit(self: *SymbolTable) void {
         var it = self.store.iterator();
         while (it.next()) |entry| {

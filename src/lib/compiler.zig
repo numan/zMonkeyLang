@@ -226,6 +226,7 @@ pub const Compiler = struct {
             .integer_literal => |*val| self.compileIntegerLiteral(val),
             .float_literal => |*val| self.compileFloatLiteral(val),
             .boolean_literal => |*val| self.compileBooleanLiteral(val),
+            .null_literal => _ = try self.emit(.op_null, &.{}),
             .infix_expression => |*val| self.compileInfixExpression(val),
             .prefix_expression => |*val| self.compilePrefixExpression(val),
             .if_expression => |*val| self.compileIfExpression(val),

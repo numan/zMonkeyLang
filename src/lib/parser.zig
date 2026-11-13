@@ -288,6 +288,10 @@ pub const Parser = struct {
         return ast.StatementType.ExpressionStatement.initBooleanLiteralExpression(parser.current_token, val);
     }
 
+    fn parseNullLiteral(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
+        return .{ .expression = .{ .null_literal = .{ .token = parser.current_token } } };
+    }
+
     fn parsePrefixOperator(parser: *Self) ParseError!?ast.StatementType.ExpressionStatement {
         const cur_token = parser.current_token;
         parser.nextToken();
@@ -604,6 +608,7 @@ pub const Parser = struct {
             .@"if" => Self.parseIfExpression,
             .function => Self.parseFunctionLiteral,
             inline .true, .false => Self.parseBooleanLiteral,
+            .null => Self.parseNullLiteral,
             inline .bang, .minus => Self.parsePrefixOperator,
             .string => Self.parseStringLiteral,
             .lbracket => Self.parseArrayLiteral,

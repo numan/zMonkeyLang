@@ -6,6 +6,7 @@ const vm_mod = @import("vm.zig");
 const Vm = vm_mod.Vm;
 const Object = @import("object.zig").Object;
 const SymbolTable = @import("symbol_table.zig").SymbolTable;
+const Program = @import("ast.zig").Program;
 
 pub const VmState = struct {
     allocator: std.mem.Allocator,
@@ -13,6 +14,7 @@ pub const VmState = struct {
     constants_arena: std.heap.ArenaAllocator,
     symbol_table: SymbolTable,
     constants: std.ArrayList(Object),
+    /// Starts as null, so a name whose `let` failed at run time reads as null.
     globals: [vm_mod.globals_size]Object,
 
     pub fn init(allocator: std.mem.Allocator) VmState {
@@ -22,7 +24,7 @@ pub const VmState = struct {
             .constants_arena = std.heap.ArenaAllocator.init(allocator),
             .symbol_table = SymbolTable.init(allocator, null),
             .constants = .empty,
-            .globals = undefined,
+            .globals = @splat(.{ .null = Object.Null.init() }),
         };
     }
 
@@ -37,6 +39,17 @@ pub const VmState = struct {
         var comp = Compiler.init(self.allocator, self.constants_arena.allocator(), &self.symbol_table, &self.constants);
         try comp.enterScope();
         return comp;
+    }
+
+    /// Compiles one line with `comp`. If compilation fails, the names the line
+    /// defined are forgotten, because the line never stores their values.
+    pub fn compile(self: *VmState, comp: *Compiler, program: *const Program) !void {
+        var saved = try self.symbol_table.snapshot();
+        comp.compile(program) catch |err| {
+            self.symbol_table.restore(saved);
+            return err;
+        };
+        saved.deinit();
     }
 
     pub fn newVm(self: *VmState, bytecode: Bytecode, writer: *std.Io.Writer) !Vm {

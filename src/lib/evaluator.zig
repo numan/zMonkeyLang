@@ -263,6 +263,7 @@ pub const Evaluator = struct {
                 break :blk if (value == .err) wrapResult(.err, value) else wrapResult(.value, value);
             },
             .boolean_literal => |boolean_literal| wrapResult(.value, if (boolean_literal.value) TRUE else FALSE),
+            .null_literal => wrapResult(.value, NULL),
             .prefix_expression => |*prefix_expression| try self.evalPrefixExpression(prefix_expression),
             .infix_expression => |*infix_expression| try self.evalInfixExpression(infix_expression),
             .if_expression => |*if_expression| try self.evalIfExpression(if_expression),
@@ -503,6 +504,15 @@ pub const Evaluator = struct {
                 return self.errorObj("range bounds must be integers: {s} .. {s}", .{ left.typeName(), right.typeName() });
             }
             return .{ .range = .{ .start = left.int.value, .end = right.int.value } };
+        }
+        // Null equals only null, so `x == null` works for a value of any type.
+        if (left.* == .null or right.* == .null) {
+            const both_null = left.* == .null and right.* == .null;
+            switch (expression.token.token_type) {
+                .eq => return if (both_null) TRUE else FALSE,
+                .not_eq => return if (both_null) FALSE else TRUE,
+                else => {},
+            }
         }
         return switch (right.*) {
             .int => |*right_ptr| switch (left.*) {

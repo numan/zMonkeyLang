@@ -308,3 +308,24 @@ test "identifiers can contain digits after the first character" {
         try testing.expectEqualStrings(expected_output[1], tkn.ch);
     }
 }
+
+test "null is a keyword, but names may start with it" {
+    const input = "x == null; nullable";
+
+    const tests = [_]struct { TokenType, []const u8 }{
+        .{ .iden, "x" },
+        .{ .eq, "==" },
+        .{ .null, "null" },
+        .{ .semicolon, ";" },
+        .{ .iden, "nullable" },
+        .{ .eof, "eof" },
+    };
+
+    var lexer = Lexer.init(input);
+
+    for (tests) |expected_output| {
+        const tkn = lexer.nextToken();
+        try testing.expectEqual(expected_output[0], tkn.token_type);
+        try testing.expectEqualStrings(expected_output[1], tkn.ch);
+    }
+}

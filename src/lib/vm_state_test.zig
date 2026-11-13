@@ -25,7 +25,7 @@ fn runLine(state: *VmState, line: []const u8) !Object {
 
     var comp = try state.newCompiler();
     defer comp.deinit();
-    try comp.compile(program);
+    try state.compile(&comp, program);
 
     var test_writer = std.Io.Writer.Allocating.init(allocator);
     defer test_writer.deinit();
@@ -43,6 +43,26 @@ test "functions defined on an earlier line can be called" {
     const result = try runLine(&state, "addOne(2)");
 
     try testing.expectEqual(@as(i64, 3), result.int.value);
+}
+
+test "a line that fails to compile defines none of its names" {
+    var state = VmState.init(testing.allocator);
+    defer state.deinit();
+
+    _ = try runLine(&state, "let kept = 1;");
+    try testing.expectError(error.UndefinedVariable, runLine(&state, "let kept = 2; let broken = fn() { missing };"));
+
+    try testing.expectEqual(@as(i64, 1), (try runLine(&state, "kept")).int.value);
+    try testing.expectError(error.UndefinedVariable, runLine(&state, "broken"));
+}
+
+test "a name whose value failed at run time is null" {
+    var state = VmState.init(testing.allocator);
+    defer state.deinit();
+
+    try testing.expectError(error.TypeMismatch, runLine(&state, "let failed = 1 + \"a\";"));
+
+    try testing.expect(try runLine(&state, "failed") == .null);
 }
 
 test "strings bound on an earlier line keep their value" {

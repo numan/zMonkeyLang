@@ -241,6 +241,31 @@ test "prefix expressions" {
     try runVmTests(&tests);
 }
 
+test "null literal" {
+    const tests = [_]VmTestCase{
+        .{ .input = "null", .expected = .null },
+        .{ .input = "null == null", .expected = .{ .boolean = true } },
+        .{ .input = "null != null", .expected = .{ .boolean = false } },
+        .{ .input = "5 == null", .expected = .{ .boolean = false } },
+        .{ .input = "null != \"a\"", .expected = .{ .boolean = true } },
+        .{ .input = "[][0] == null", .expected = .{ .boolean = true } },
+        .{ .input = "!null", .expected = .{ .boolean = true } },
+        .{ .input = "if (null) { 1 } else { 2 }", .expected = .{ .int = 2 } },
+        .{ .input = "let x = null; x = 3; x", .expected = .{ .int = 3 } },
+    };
+
+    try runVmTests(&tests);
+}
+
+test "null literal errors" {
+    const tests = [_]VmErrorTestCase{
+        .{ .input = "null + 1", .expected_error = error.TypeMismatch },
+        .{ .input = "{null: 1}", .expected_error = error.HashNotHashable },
+    };
+
+    try runVmErrorTests(&tests);
+}
+
 test "conditionals" {
     const tests = [_]VmTestCase{
         .{ .input = "if (true) { 10 }", .expected = .{ .int = 10 } },

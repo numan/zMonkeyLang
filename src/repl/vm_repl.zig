@@ -48,7 +48,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator) !void {
             };
             defer compiler.deinit();
 
-            compiler.compile(program) catch |err| {
+            state.compile(&compiler, program) catch |err| {
                 try stdout.print("Compiler error: {s}\n", .{@errorName(err)});
                 try showPrompt(stdout);
                 continue;

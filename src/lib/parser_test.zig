@@ -401,6 +401,30 @@ test "basic int parsing" {
     try testIntegerLiteral(&expression_statement.expression, 5);
 }
 
+test "parse null literal" {
+    const allocator = std.testing.allocator;
+
+    var lexer = Lexer.init("null;");
+    var parser = Parser.init(allocator, &lexer);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+
+    try checkParserErrors(&parser);
+    try testing.expectEqual(1, program.statements.items.len);
+
+    const stmt = switch (program.statements.items[0]) {
+        .expression => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try testing.expect(stmt.expression == .null_literal);
+
+    var output_writer = std.Io.Writer.Allocating.init(allocator);
+    defer output_writer.deinit();
+    try stmt.expression.toString(&output_writer.writer);
+    try testing.expectEqualStrings("null", output_writer.written());
+}
+
 test "parse string literal expression" {
     const input = "\"hello world\";";
 

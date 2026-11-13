@@ -363,6 +363,26 @@ test "prefix expressions" {
     try runCompilerTests(allocator, &tests);
 }
 
+test "null literal" {
+    const allocator = testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const tests = [_]CompilerTestCase{
+        .{
+            .input = "null",
+            .expected_constants = &.{},
+            .expected_instructions = &.{
+                makeOp(a, .op_null, &.{}),
+                makeOp(a, .pop, &.{}),
+            },
+        },
+    };
+
+    try runCompilerTests(allocator, &tests);
+}
+
 test "conditionals" {
     const allocator = testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);

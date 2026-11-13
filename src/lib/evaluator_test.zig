@@ -1310,6 +1310,7 @@ test "builtin len function" {
         .{ .input = "len(\"hello\")", .expected = 5 },
         .{ .input = "len(\"\")", .expected = 0 },
         .{ .input = "len(\"hello world\")", .expected = 11 },
+        .{ .input = "len(\"zig⚡🐒\")", .expected = 5 },
     };
 
     for (tests) |case| {

@@ -69,6 +69,16 @@ pub const Object = union(enum) {
             return len;
         }
 
+        /// Returns how many characters the string has, as defined by `charLen`.
+        pub fn charCount(self: *const String) usize {
+            var count: usize = 0;
+            var byte_offset: usize = 0;
+            while (byte_offset < self.value.len) : (count += 1) {
+                byte_offset += charLen(self.value[byte_offset..]);
+            }
+            return count;
+        }
+
         pub fn hashKey(self: *const String) HashKey {
             return .{ .obj_type = .string, .value = std.hash.Fnv1a_64.hash(self.value) };
         }

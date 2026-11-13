@@ -157,6 +157,20 @@ test "charLen measures one UTF-8 code point, or one byte where the bytes are not
     }
 }
 
+test "charCount counts UTF-8 code points, and each byte that is not valid UTF-8" {
+    const cases = [_]struct { value: []const u8, expected: usize }{
+        .{ .value = "", .expected = 0 },
+        .{ .value = "hello", .expected = 5 },
+        .{ .value = "héllo", .expected = 5 },
+        .{ .value = "zig⚡🐒", .expected = 5 },
+        .{ .value = "\xffa\xc3", .expected = 3 },
+    };
+    for (cases) |case| {
+        const string = Object.String.init(case.value);
+        try std.testing.expectEqual(case.expected, string.charCount());
+    }
+}
+
 test "hash iterator yields keys, or keys and values" {
     var hash = Object.Hash{ .pairs = .init(std.testing.allocator) };
     defer hash.pairs.deinit();

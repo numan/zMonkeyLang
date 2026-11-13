@@ -637,6 +637,7 @@ test "builtin functions" {
         .{ .input = "len(\"\")", .expected = .{ .int = 0 } },
         .{ .input = "len(\"four\")", .expected = .{ .int = 4 } },
         .{ .input = "len(\"hello world\")", .expected = .{ .int = 11 } },
+        .{ .input = "len(\"zig⚡🐒\")", .expected = .{ .int = 5 } },
         .{ .input = "len(1)", .expected = .{ .err = "argument to `len` not supported, got int" } },
         .{ .input = "len(\"one\", \"two\")", .expected = .{ .err = "wrong number of arguments. got=2, want=1" } },
         .{ .input = "len([1, 2, 3])", .expected = .{ .int = 3 } },

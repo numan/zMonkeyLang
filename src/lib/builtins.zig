@@ -62,7 +62,7 @@ fn expectSingleArrayArg(allocator: std.mem.Allocator, comptime name: []const u8,
 fn builtinLen(allocator: std.mem.Allocator, args: []const Object) std.mem.Allocator.Error!Object {
     if (try expectArgCount(allocator, args, 1)) |err| return err;
     return switch (args[0]) {
-        .string => |s| .{ .int = Object.Integer.init(@intCast(s.value.len)) },
+        .string => |s| .{ .int = Object.Integer.init(@intCast(s.charCount())) },
         .array => |a| .{ .int = Object.Integer.init(@intCast(a.elements.len)) },
         else => try newError(allocator, "argument to `len` not supported, got {s}", .{args[0].typeName()}),
     };

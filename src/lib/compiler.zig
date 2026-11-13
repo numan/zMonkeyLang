@@ -148,9 +148,16 @@ pub const Compiler = struct {
     }
 
     fn compileLetStatement(self: *Self, let_stmt: *const StatementType.LetStatement) !void {
-        const sym = try self.symbol_table.define(let_stmt.name.value);
-        try self.compile(&let_stmt.value.expression);
-        try self.setSymbol(sym);
+        // A function literal may call itself by name, so bind the name first.
+        // Any other value sees the name's previous binding, if there is one.
+        if (let_stmt.value.expression == .function_literal) {
+            const sym = try self.symbol_table.define(let_stmt.name.value);
+            try self.compile(&let_stmt.value.expression);
+            try self.setSymbol(sym);
+        } else {
+            try self.compile(&let_stmt.value.expression);
+            try self.setSymbol(try self.symbol_table.define(let_stmt.name.value));
+        }
     }
 
     fn compileForStatement(self: *Self, loop: *const StatementType.ForStatement) !void {
@@ -270,9 +277,7 @@ pub const Compiler = struct {
 
         const jump_not_truthy_pos = try self.emit(.jump_not_truthy, &.{jump_placeholder});
 
-        try self.compile(&if_expression.consequence);
-
-        self.removeLast(.pop);
+        try self.compileIfBranch(&if_expression.consequence);
 
         // Always emit OpJump after consequence
         const jump_pos = try self.emit(.jump, &.{jump_placeholder});
@@ -280,14 +285,24 @@ pub const Compiler = struct {
         try self.changeOperand(jump_not_truthy_pos, after_consequence_pos);
 
         if (if_expression.alternative) |*alt| {
-            try self.compile(alt);
-            self.removeLast(.pop);
+            try self.compileIfBranch(alt);
         } else {
             _ = try self.emit(.op_null, &.{});
         }
 
         const after_alternative_pos = self.currentScope().instructions.items.len;
         try self.changeOperand(jump_pos, after_alternative_pos);
+    }
+
+    /// Compiles a branch so that it leaves exactly one value on the stack: the
+    /// value of its trailing expression, or null when it ends in anything else.
+    fn compileIfBranch(self: *Self, branch: *const StatementType.BlockStatement) !void {
+        try self.compileBlockStatement(branch);
+        if (self.lastInstructionIs(.pop)) {
+            self.removeLast(.pop);
+        } else {
+            _ = try self.emit(.op_null, &.{});
+        }
     }
 
     fn compileAssignExpression(self: *Self, assign: *const ExpressionType.AssignExpression) !void {

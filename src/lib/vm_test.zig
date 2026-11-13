@@ -253,6 +253,11 @@ test "conditionals" {
         .{ .input = "if (1 > 2) { 10 }", .expected = .null },
         .{ .input = "if (false) { 10 }", .expected = .null },
         .{ .input = "if ((if (false) { 10 })) { 10 } else { 20 }", .expected = .{ .int = 20 } },
+        // Branches that produce no value evaluate to null.
+        .{ .input = "if (true) { let a = 1; }", .expected = .null },
+        .{ .input = "if (false) { 10 } else { let a = 1; }", .expected = .null },
+        .{ .input = "if (true) { }", .expected = .null },
+        .{ .input = "if (true) { let a = 1; }; 5", .expected = .{ .int = 5 } },
     };
 
     try runVmTests(&tests);
@@ -265,6 +270,9 @@ test "let statements" {
         .{ .input = "let one = 1; let two = one; two;", .expected = .{ .int = 1 } },
         .{ .input = "let x = 5; x;", .expected = .{ .int = 5 } },
         .{ .input = "let x = 5; let y = 10; x + y;", .expected = .{ .int = 15 } },
+        // The value is evaluated before the name is bound, so it sees the previous binding.
+        .{ .input = "let x = 1; let x = x + 1; x;", .expected = .{ .int = 2 } },
+        .{ .input = "let x = 1; let f = fn() { let x = x + 1; x }; f();", .expected = .{ .int = 2 } },
     };
 
     try runVmTests(&tests);

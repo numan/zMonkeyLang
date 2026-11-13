@@ -1383,6 +1383,12 @@ test "assignment expressions" {
     try expectCompileError(allocator, "x = 1;", error.UndefinedVariable);
 }
 
+test "a let value cannot refer to the name it defines" {
+    const allocator = testing.allocator;
+    try expectCompileError(allocator, "let x = x;", error.UndefinedVariable);
+    try expectCompileError(allocator, "fn() { let y = y; };", error.UndefinedVariable);
+}
+
 test "for loops" {
     const allocator = testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);

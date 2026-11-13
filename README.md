@@ -113,7 +113,7 @@ The inner `sort` function adds each item to one of the outer function's arrays.
 
 ## A quick tour
 
-Start the REPL with `zig build run`. The REPL reads one line at a time, so each statement in this tour fits on one line. Each section stands alone, so you can run any of them in a fresh REPL.
+Start the REPL with `zig build run -Doptimize=ReleaseSafe`. The REPL reads one line at a time, so each statement in this tour fits on one line. Each section stands alone, so you can run any of them in a fresh REPL.
 
 ### Values
 
@@ -216,4 +216,52 @@ yeknom
 [1, 4, 9, 16, 25]
 >> if (len(squares) > 5) { "big" } else { "small" }
 big
+```
+
+## Builtins
+
+| Builtin | Description |
+| --- | --- |
+| `len(x)` | Number of characters in a string, or number of elements in an array. Any other type is an error. |
+| `puts(...)` | Prints each argument on its own line and returns `null`. Takes any number of arguments. |
+| `first(arr)` | First element of an array, or `null` if the array is empty. |
+| `last(arr)` | Last element of an array, or `null` if the array is empty. |
+| `rest(arr)` | New array without the first element, or `null` if the array is empty. |
+| `push(arr, x)` | New array with `x` added to the end. The original array is unchanged. |
+
+`first`, `last`, `rest`, and `push` only accept arrays.
+
+## Development
+
+You need [Zig](https://ziglang.org/download/) 0.17.1 or newer.
+
+### Build
+
+```sh
+zig build -Doptimize=ReleaseSafe
+```
+
+This installs the `zmonkeylang` REPL and the `fibonacci` benchmark into `zig-out/bin`.
+
+### Run the REPL
+
+```sh
+zig build run -Doptimize=ReleaseSafe
+```
+
+The REPL uses the compiler and VM. Press Ctrl-D to exit.
+
+### Run the tests
+
+```sh
+zig build test -Doptimize=ReleaseSafe
+```
+
+### Run the benchmarks
+
+The benchmark runs a recursive `fibonacci(28)` five times and prints how long it took. It uses the VM by default. Pass `-engine=eval` to run it on the interpreter instead.
+
+```sh
+zig build benchmark -Doptimize=ReleaseSafe
+zig build benchmark -Doptimize=ReleaseSafe -- -engine=eval
 ```

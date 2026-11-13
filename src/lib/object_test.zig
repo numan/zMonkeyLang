@@ -60,7 +60,7 @@ fn expectInt(expected: i64, actual: Object) !void {
 }
 
 fn expectNext(iterator: *Object.Iterator, first: i64, second: ?i64) !void {
-    const bindings = iterator.next() orelse return error.TestUnexpectedResult;
+    const bindings = try iterator.next(std.testing.allocator) orelse return error.TestUnexpectedResult;
     try expectInt(first, bindings.first);
     if (second) |expected| {
         try expectInt(expected, bindings.second orelse return error.TestUnexpectedResult);
@@ -75,22 +75,22 @@ test "range iterator yields values, or indexes and values" {
     var values = Object.Iterator.init(range, false) orelse return error.TestUnexpectedResult;
     try expectNext(&values, 5, null);
     try expectNext(&values, 6, null);
-    try std.testing.expectEqual(null, values.next());
+    try std.testing.expectEqual(null, try values.next(std.testing.allocator));
 
     var pairs = Object.Iterator.init(range, true) orelse return error.TestUnexpectedResult;
     try expectNext(&pairs, 0, 5);
     try expectNext(&pairs, 1, 6);
-    try std.testing.expectEqual(null, pairs.next());
+    try std.testing.expectEqual(null, try pairs.next(std.testing.allocator));
 }
 
 test "range iterator handles empty ranges and the integer limit" {
     var empty = Object.Iterator.init(.{ .range = .{ .start = 3, .end = 1 } }, false) orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqual(null, empty.next());
+    try std.testing.expectEqual(null, try empty.next(std.testing.allocator));
 
     const max = std.math.maxInt(i64);
     var at_limit = Object.Iterator.init(.{ .range = .{ .start = max - 1, .end = max } }, false) orelse return error.TestUnexpectedResult;
     try expectNext(&at_limit, max - 1, null);
-    try std.testing.expectEqual(null, at_limit.next());
+    try std.testing.expectEqual(null, try at_limit.next(std.testing.allocator));
 }
 
 test "array iterator yields items, or indexes and items" {
@@ -101,27 +101,60 @@ test "array iterator yields items, or indexes and items" {
     var values = Object.Iterator.init(iterable, false) orelse return error.TestUnexpectedResult;
     try expectNext(&values, 2, null);
     try expectNext(&values, 3, null);
-    try std.testing.expectEqual(null, values.next());
+    try std.testing.expectEqual(null, try values.next(std.testing.allocator));
 
     var pairs = Object.Iterator.init(iterable, true) orelse return error.TestUnexpectedResult;
     try expectNext(&pairs, 0, 2);
     try expectNext(&pairs, 1, 3);
-    try std.testing.expectEqual(null, pairs.next());
+    try std.testing.expectEqual(null, try pairs.next(std.testing.allocator));
 }
 
-test "string iterator yields bytes, or indexes and bytes" {
-    var string = Object.String.init("ab");
+fn expectNextString(iterator: *Object.Iterator, allocator: std.mem.Allocator, index: ?i64, expected: []const u8) !void {
+    const bindings = try iterator.next(allocator) orelse return error.TestUnexpectedResult;
+    if (index) |expected_index| {
+        try expectInt(expected_index, bindings.first);
+        const item = bindings.second orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(expected, item.string.value);
+    } else {
+        try std.testing.expectEqualStrings(expected, bindings.first.string.value);
+        try std.testing.expectEqual(null, bindings.second);
+    }
+}
+
+test "string iterator yields UTF-8 characters, or character indexes and characters" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var string = Object.String.init("aéb");
     const iterable = Object{ .string = &string };
 
     var values = Object.Iterator.init(iterable, false) orelse return error.TestUnexpectedResult;
-    try expectNext(&values, 'a', null);
-    try expectNext(&values, 'b', null);
-    try std.testing.expectEqual(null, values.next());
+    try expectNextString(&values, allocator, null, "a");
+    try expectNextString(&values, allocator, null, "é");
+    try expectNextString(&values, allocator, null, "b");
+    try std.testing.expectEqual(null, try values.next(allocator));
 
     var pairs = Object.Iterator.init(iterable, true) orelse return error.TestUnexpectedResult;
-    try expectNext(&pairs, 0, 'a');
-    try expectNext(&pairs, 1, 'b');
-    try std.testing.expectEqual(null, pairs.next());
+    try expectNextString(&pairs, allocator, 0, "a");
+    try expectNextString(&pairs, allocator, 1, "é");
+    try expectNextString(&pairs, allocator, 2, "b");
+    try std.testing.expectEqual(null, try pairs.next(allocator));
+}
+
+test "charLen measures one UTF-8 code point, or one byte where the bytes are not valid UTF-8" {
+    const cases = [_]struct { bytes: []const u8, expected: usize }{
+        .{ .bytes = "ab", .expected = 1 },
+        .{ .bytes = "éa", .expected = 2 },
+        .{ .bytes = "€", .expected = 3 },
+        .{ .bytes = "🐒", .expected = 4 },
+        .{ .bytes = "\xffa", .expected = 1 }, // not a start byte
+        .{ .bytes = "\xc3a", .expected = 1 }, // start byte without its continuation byte
+        .{ .bytes = "\xe2\x82", .expected = 1 }, // cut off by the end of the string
+        .{ .bytes = "\xc0\xaf", .expected = 1 }, // overlong encoding
+    };
+    for (cases) |case| {
+        try std.testing.expectEqual(case.expected, Object.String.charLen(case.bytes));
+    }
 }
 
 test "hash iterator yields keys, or keys and values" {
@@ -133,11 +166,11 @@ test "hash iterator yields keys, or keys and values" {
 
     var keys = Object.Iterator.init(iterable, false) orelse return error.TestUnexpectedResult;
     try expectNext(&keys, 2, null);
-    try std.testing.expectEqual(null, keys.next());
+    try std.testing.expectEqual(null, try keys.next(std.testing.allocator));
 
     var pairs = Object.Iterator.init(iterable, true) orelse return error.TestUnexpectedResult;
     try expectNext(&pairs, 2, 10);
-    try std.testing.expectEqual(null, pairs.next());
+    try std.testing.expectEqual(null, try pairs.next(std.testing.allocator));
 }
 
 test "non-iterable objects have no iterator" {

@@ -146,7 +146,7 @@ test "closures share captured variables with their enclosing function" {
     }
 }
 
-test "iterator loops evaluate once and bind ranges arrays hashes and byte strings" {
+test "iterator loops evaluate once and bind ranges arrays hashes and string characters" {
     const cases = [_]struct { input: []const u8, expected: i64 }{
         .{ .input = "let n = 0; for i in 0..4 { n = n + i; } n;", .expected = 6 },
         .{ .input = "let n = 0; let r = -2..2; for i in r { n = n + i; } n;", .expected = -2 },
@@ -156,9 +156,8 @@ test "iterator loops evaluate once and bind ranges arrays hashes and byte string
         .{ .input = "let n = 0; for index, value in [2, 3, 4] { n = n + index * value; } n;", .expected = 11 },
         .{ .input = "let n = 0; for key in {2: 10, 3: 20} { n = n + key; } n;", .expected = 5 },
         .{ .input = "let n = 0; for key, value in {2: 10, 3: 20} { n = n + key + value; } n;", .expected = 35 },
-        .{ .input = "let n = 0; for byte in \"ab\" { n = n + byte; } n;", .expected = 195 },
-        .{ .input = "let n = 0; for index, byte in \"ab\" { n = n + index + byte; } n;", .expected = 196 },
-        .{ .input = "let n = 0; for byte in \"é\" { n = n + byte; } n;", .expected = 364 },
+        .{ .input = "let n = 0; for c in \"banana\" { if (c == \"a\") { n = n + 1; } } n;", .expected = 3 },
+        .{ .input = "let n = 0; for index, c in \"héy\" { n = n + index; } n;", .expected = 3 },
         .{ .input = "let n = 0; for v in [] { n = 1; } for k in {} { n = 2; } for b in \"\" { n = 3; } n;", .expected = 0 },
         .{ .input = "let calls = 0; let values = fn() { calls = calls + 1; [1, 2, 3]; }; for i in values() {} calls;", .expected = 1 },
         .{ .input = "let values = [1, 2, 3]; let n = 0; for i in values { values = []; n = n + i; } n;", .expected = 6 },
@@ -178,6 +177,20 @@ test "iterator loops evaluate once and bind ranges arrays hashes and byte string
         try testIntegerObjectEqual(try testEval(case.input, testing.allocator, &evaluator), case.expected);
         try testing.expect(evaluator.environment == env);
     }
+}
+
+test "iterating a string binds each UTF-8 character as a string" {
+    var collector = Gc.init(testing.allocator);
+    defer collector.deinit();
+    const env = try collector.allocEnvironment(null);
+    var writer = std.Io.Writer.Allocating.init(testing.allocator);
+    defer writer.deinit();
+    var evaluator = Evaluator.init(env, &collector, &writer.writer);
+    defer evaluator.deinit();
+    try testStringObjectEqual(
+        try testEval("let s = \"\"; for c in \"héllo\" { s = s + c + \"-\"; } s;", testing.allocator, &evaluator),
+        "h-é-l-l-o-",
+    );
 }
 
 test "loop errors stop execution and restore the environment" {
@@ -275,7 +288,7 @@ test "gc reclaims transient loop values without releasing shared globals" {
         \\let count = 0;
         \\for item in source { source = []; count = count + 1; }
         \\for key, value in {"a": keep, "b": keep} {}
-        \\for byte in "é" {}
+        \\for c in "é" {}
         \\count;
     , testing.allocator, &evaluator), 4);
     collector.collect(env);

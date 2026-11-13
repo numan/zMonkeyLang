@@ -304,7 +304,7 @@ pub const Vm = struct {
                     const exit_pos = std.mem.readInt(u16, ins[ip..][0..2], .big);
                     ip += 2;
                     // The iterator stays on the stack until the loop exits.
-                    if (self.stack[self.sp - 1].iterator.next()) |bindings| {
+                    if (try self.stack[self.sp - 1].iterator.next(self.allocator)) |bindings| {
                         try self.push(bindings.first);
                         if (bindings.second) |second| try self.push(second);
                     } else {

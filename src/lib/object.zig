@@ -61,6 +61,14 @@ pub const Object = union(enum) {
             return .{ .value = value };
         }
 
+        /// Returns the byte length of the first character in `bytes`: one UTF-8
+        /// code point, or a single byte where the bytes are not valid UTF-8.
+        pub fn charLen(bytes: []const u8) usize {
+            const len = std.unicode.utf8ByteSequenceLength(bytes[0]) catch return 1;
+            if (len > bytes.len or !std.unicode.utf8ValidateSlice(bytes[0..len])) return 1;
+            return len;
+        }
+
         pub fn hashKey(self: *const String) HashKey {
             return .{ .obj_type = .string, .value = std.hash.Fnv1a_64.hash(self.value) };
         }
@@ -295,6 +303,8 @@ pub const Object = union(enum) {
     pub const Iterator = struct {
         source: Source,
         index: usize = 0,
+        /// Byte position of the next character when iterating a string.
+        byte_offset: usize = 0,
         /// Whether the loop binds two names, as in `for k, v in ...`.
         binds_pair: bool,
 
@@ -324,7 +334,9 @@ pub const Object = union(enum) {
             return .{ .source = source, .binds_pair = binds_pair };
         }
 
-        pub fn next(self: *Iterator) ?Bindings {
+        /// Strings yield one character at a time, allocated with `allocator` and
+        /// pointing into the iterated string's bytes.
+        pub fn next(self: *Iterator, allocator: std.mem.Allocator) std.mem.Allocator.Error!?Bindings {
             const key: Object, const item: Object = switch (self.source) {
                 .range => |range| blk: {
                     const value = @as(i128, range.start) + self.index;
@@ -336,8 +348,12 @@ pub const Object = union(enum) {
                     break :blk .{ intObject(self.index), array.elements[self.index] };
                 },
                 .string => |string| blk: {
-                    if (self.index >= string.value.len) return null;
-                    break :blk .{ intObject(self.index), .{ .int = Integer.init(string.value[self.index]) } };
+                    if (self.byte_offset >= string.value.len) return null;
+                    const rest = string.value[self.byte_offset..];
+                    const char = try allocator.create(String);
+                    char.* = String.init(rest[0..String.charLen(rest)]);
+                    self.byte_offset += char.value.len;
+                    break :blk .{ intObject(self.index), .{ .string = char } };
                 },
                 .hash => |*entries| blk: {
                     const entry = entries.next() orelse return null;

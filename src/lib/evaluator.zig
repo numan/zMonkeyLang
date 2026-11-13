@@ -197,10 +197,15 @@ pub const Evaluator = struct {
                 }
             },
             .string => |string| {
-                for (string.value, 0..) |byte, index| {
-                    const item: Object = .{ .int = Object.Integer.init(byte) };
+                var byte_offset: usize = 0;
+                var index: i64 = 0;
+                while (byte_offset < string.value.len) : (index += 1) {
+                    const rest = string.value[byte_offset..];
+                    const char_len = Object.String.charLen(rest);
+                    byte_offset += char_len;
+                    const item = try self.gc.allocString(rest[0..char_len]);
                     const first: Object = if (iterator.second_ident != null)
-                        .{ .int = Object.Integer.init(@intCast(index)) }
+                        .{ .int = Object.Integer.init(index) }
                     else
                         item;
                     const result = try self.evalIteration(iterator, body, first, item);
